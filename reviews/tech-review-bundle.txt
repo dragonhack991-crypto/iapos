@@ -1,0 +1,780 @@
+===== FILE: prisma/schema.prisma =====
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  nombre       String
+  passwordHash String
+  activo       Boolean        @default(true)
+  creadoEn     DateTime       @default(now())
+  actualizadoEn DateTime      @updatedAt
+  roles        UsuarioRol[]
+  sesionesApertura SesionCaja[] @relation("UsuarioApertura")
+  movimientos  MovimientoInventario[]
+
+  @@map("usuarios")
+}
+
+model Rol {
+  id          String       @id @default(cuid())
+  nombre      String       @unique
+  descripcion String?
+  usuarios    UsuarioRol[]
+  permisos    RolPermiso[]
+  creadoEn    DateTime     @default(now())
+
+  @@map("roles")
+}
+
+model Permiso {
+  id          String       @id @default(cuid())
+  nombre      String       @unique
+  descripcion String?
+  roles       RolPermiso[]
+  creadoEn    DateTime     @default(now())
+
+  @@map("permisos")
+}
+
+model UsuarioRol {
+  usuarioId String
+  rolId     String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  rol       Rol      @relation(fields: [rolId], references: [id], onDelete: Cascade)
+  asignadoEn DateTime @default(now())
+
+  @@id([usuarioId, rolId])
+  @@map("usuario_roles")
+}
+
+model RolPermiso {
+  rolId     String
+  permisoId String
+  rol       Rol     @relation(fields: [rolId], references: [id], onDelete: Cascade)
+  permiso   Permiso @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+  asignadoEn DateTime @default(now())
+
+  @@id([rolId, permisoId])
+  @@map("rol_permisos")
+}
+
+model ConfiguracionSistema {
+  id    String @id @default(cuid())
+  clave String @unique
+  valor String
+  creadoEn DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("configuracion_sistema")
+}
+
+model Sucursal {
+  id        String   @id @default(cuid())
+  nombre    String
+  direccion String?
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now())
+  cajas     Caja[]
+
+  @@map("sucursales")
+}
+
+model Caja {
+  id         String      @id @default(cuid())
+  nombre     String
+  sucursalId String
+  activo     Boolean     @default(true)
+  creadoEn   DateTime    @default(now())
+  sucursal   Sucursal    @relation(fields: [sucursalId], references: [id])
+  sesiones   SesionCaja[]
+
+  @@map("cajas")
+}
+
+model SesionCaja {
+  id             String    @id @default(cuid())
+  cajaId         String
+  usuarioAperturaId String
+  fechaApertura  DateTime  @default(now())
+  montoInicial   Decimal   @db.Decimal(10, 2)
+  fechaCierre    DateTime?
+  montoContado   Decimal?  @db.Decimal(10, 2)
+  diferencia     Decimal?  @db.Decimal(10, 2)
+  observaciones  String?
+  estado         EstadoSesion @default(ABIERTA)
+  caja           Caja      @relation(fields: [cajaId], references: [id])
+  usuarioApertura Usuario  @relation("UsuarioApertura", fields: [usuarioAperturaId], references: [id])
+
+  @@map("sesiones_caja")
+}
+
+enum EstadoSesion {
+  ABIERTA
+  CERRADA
+}
+
+model Producto {
+  id           String         @id @default(cuid())
+  nombre       String
+  codigoBarras String?        @unique
+  tipoVenta    TipoVenta      @default(PIEZA)
+  costoActual  Decimal        @db.Decimal(10, 2)
+  margen       Decimal        @db.Decimal(5, 2)
+  precioVenta  Decimal        @db.Decimal(10, 2)
+  ivaAplica    Boolean        @default(true)
+  iepsAplica   Boolean        @default(false)
+  iepsPorcentaje Decimal      @default(0) @db.Decimal(5, 2)
+  activo       Boolean        @default(true)
+  creadoEn     DateTime       @default(now())
+  actualizadoEn DateTime      @updatedAt
+  inventario   Inventario?
+  movimientos  MovimientoInventario[]
+
+  @@map("productos")
+}
+
+enum TipoVenta {
+  PIEZA
+  CAJA
+  GRANEL
+}
+
+model Inventario {
+  id         String   @id @default(cuid())
+  productoId String   @unique
+  cantidad   Decimal  @db.Decimal(10, 3)
+  actualizadoEn DateTime @updatedAt
+  producto   Producto @relation(fields: [productoId], references: [id])
+
+  @@map("inventario")
+}
+
+model MovimientoInventario {
+  id         String       @id @default(cuid())
+  productoId String
+  tipo       TipoMovimiento
+  cantidad   Decimal      @db.Decimal(10, 3)
+  motivo     String?
+  usuarioId  String?
+  creadoEn   DateTime     @default(now())
+  producto   Producto     @relation(fields: [productoId], references: [id])
+  usuario    Usuario?     @relation(fields: [usuarioId], references: [id])
+
+  @@map("movimientos_inventario")
+}
+
+enum TipoMovimiento {
+  ENTRADA
+  SALIDA
+  AJUSTE
+}
+
+===== FILE: src/lib/auth.ts =====
+import { SignJWT, jwtVerify } from 'jose'
+import { cookies } from 'next/headers'
+import { prisma } from './prisma'
+
+function getJWTSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET || 'dev-secret-change-in-production-32ch'
+  return new TextEncoder().encode(secret)
+}
+
+const COOKIE_NAME = 'iapos_session'
+
+export interface JWTPayload {
+  sub: string
+  email: string
+  nombre: string
+  permisos: string[]
+}
+
+export async function crearToken(payload: JWTPayload): Promise<string> {
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('8h')
+    .sign(getJWTSecret())
+}
+
+export async function verificarToken(token: string): Promise<JWTPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, getJWTSecret())
+    return payload as unknown as JWTPayload
+  } catch {
+    return null
+  }
+}
+
+export async function obtenerSesion(): Promise<JWTPayload | null> {
+  const cookieStore = await cookies()
+  const token = cookieStore.get(COOKIE_NAME)?.value
+  if (!token) return null
+  return verificarToken(token)
+}
+
+export async function obtenerPermisos(usuarioId: string): Promise<string[]> {
+  const roles = await prisma.usuarioRol.findMany({
+    where: { usuarioId },
+    include: {
+      rol: {
+        include: {
+          permisos: {
+            include: { permiso: true },
+          },
+        },
+      },
+    },
+  })
+
+  const permisos = new Set<string>()
+  for (const ur of roles) {
+    for (const rp of ur.rol.permisos) {
+      permisos.add(rp.permiso.nombre)
+    }
+  }
+  return Array.from(permisos)
+}
+
+export { COOKIE_NAME }
+
+===== FILE: src/middleware.ts =====
+import { NextRequest, NextResponse } from 'next/server'
+import { verificarToken } from './lib/auth'
+
+const RUTAS_PUBLICAS = ['/login', '/setup', '/api/auth/login', '/api/setup']
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  if (RUTAS_PUBLICAS.some(ruta => pathname.startsWith(ruta))) {
+    return NextResponse.next()
+  }
+
+  if (pathname.startsWith('/_next') || pathname.startsWith('/favicon')) {
+    return NextResponse.next()
+  }
+
+  const token = request.cookies.get('iapos_session')?.value
+  if (!token) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  const payload = await verificarToken(token)
+  if (!payload) {
+    const response = NextResponse.redirect(new URL('/login', request.url))
+    response.cookies.delete('iapos_session')
+    return response
+  }
+
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+
+===== FILE: src/app/api/auth/login/route.ts =====
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import bcrypt from 'bcryptjs'
+import { prisma } from '@/lib/prisma'
+import { crearToken, obtenerPermisos, COOKIE_NAME } from '@/lib/auth'
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+})
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { email, password } = loginSchema.parse(body)
+
+    const usuario = await prisma.usuario.findUnique({ where: { email } })
+    if (!usuario || !usuario.activo) {
+      return NextResponse.json({ error: 'Credenciales inválidas' }, { status: 401 })
+    }
+
+    const valid = await bcrypt.compare(password, usuario.passwordHash)
+    if (!valid) {
+      return NextResponse.json({ error: 'Credenciales inválidas' }, { status: 401 })
+    }
+
+    const permisos = await obtenerPermisos(usuario.id)
+    const token = await crearToken({
+      sub: usuario.id,
+      email: usuario.email,
+      nombre: usuario.nombre,
+      permisos,
+    })
+
+    const response = NextResponse.json({ ok: true, nombre: usuario.nombre })
+    response.cookies.set(COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 8,
+      path: '/',
+    })
+    return response
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
+    }
+    console.error(e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
+}
+
+===== FILE: src/app/api/setup/route.ts =====
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import bcrypt from 'bcryptjs'
+import { prisma } from '@/lib/prisma'
+
+const setupSchema = z.object({
+  nombreNegocio: z.string().min(1),
+  admin: z.object({
+    nombre: z.string().min(1),
+    email: z.string().email(),
+    password: z.string().min(8),
+  }),
+})
+
+export async function POST(request: NextRequest) {
+  try {
+    const existente = await prisma.configuracionSistema.findUnique({
+      where: { clave: 'configurado' },
+    })
+    if (existente) {
+      return NextResponse.json({ error: 'El sistema ya está configurado' }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const { nombreNegocio, admin } = setupSchema.parse(body)
+
+    const usuarioExistente = await prisma.usuario.findUnique({ where: { email: admin.email } })
+    if (usuarioExistente) {
+      return NextResponse.json({ error: 'Ya existe un usuario con ese correo' }, { status: 400 })
+    }
+
+    const passwordHash = await bcrypt.hash(admin.password, 12)
+
+    await prisma.$transaction(async (tx) => {
+      const permisos = [
+        'ver_dashboard', 'vender', 'cancelar_venta', 'abrir_caja', 'cerrar_caja',
+        'administrar_usuarios', 'administrar_inventario', 'ver_reportes',
+        'administrar_productos', 'administrar_configuracion',
+      ]
+      for (const nombre of permisos) {
+        await tx.permiso.upsert({
+          where: { nombre },
+          update: {},
+          create: { nombre },
+        })
+      }
+
+      const rolAdmin = await tx.rol.upsert({
+        where: { nombre: 'Administrador' },
+        update: {},
+        create: { nombre: 'Administrador', descripcion: 'Acceso total' },
+      })
+      await tx.rol.upsert({ where: { nombre: 'Cajero' }, update: {}, create: { nombre: 'Cajero', descripcion: 'Operador de caja' } })
+      await tx.rol.upsert({ where: { nombre: 'Vendedor' }, update: {}, create: { nombre: 'Vendedor', descripcion: 'Realizar ventas' } })
+
+      const todosPermisos = await tx.permiso.findMany()
+      for (const p of todosPermisos) {
+        await tx.rolPermiso.upsert({
+          where: { rolId_permisoId: { rolId: rolAdmin.id, permisoId: p.id } },
+          update: {},
+          create: { rolId: rolAdmin.id, permisoId: p.id },
+        })
+      }
+
+      const usuario = await tx.usuario.create({
+        data: { email: admin.email, nombre: admin.nombre, passwordHash },
+      })
+
+      await tx.usuarioRol.create({
+        data: { usuarioId: usuario.id, rolId: rolAdmin.id },
+      })
+
+      const sucursal = await tx.sucursal.upsert({
+        where: { id: 'sucursal-principal' },
+        update: {},
+        create: { id: 'sucursal-principal', nombre: 'Sucursal Principal' },
+      })
+      await tx.caja.upsert({
+        where: { id: 'caja-1' },
+        update: {},
+        create: { id: 'caja-1', nombre: 'Caja 1', sucursalId: sucursal.id },
+      })
+
+      await tx.configuracionSistema.create({
+        data: { clave: 'configurado', valor: 'true' },
+      })
+      await tx.configuracionSistema.create({
+        data: { clave: 'nombre_negocio', valor: nombreNegocio },
+      })
+    })
+
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos', detalles: e.errors }, { status: 400 })
+    }
+    console.error(e)
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+  }
+}
+
+===== FILE: src/app/api/productos/route.ts =====
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { obtenerSesion } from '@/lib/auth'
+
+const productoSchema = z.object({
+  nombre: z.string().min(1),
+  codigoBarras: z.string().optional().nullable(),
+  tipoVenta: z.enum(['PIEZA', 'CAJA', 'GRANEL']).default('PIEZA'),
+  costoActual: z.number().min(0),
+  margen: z.number().min(0),
+  precioVenta: z.number().min(0),
+  ivaAplica: z.boolean().default(true),
+  iepsAplica: z.boolean().default(false),
+  iepsPorcentaje: z.number().min(0).default(0),
+})
+
+export async function GET() {
+  const sesion = await obtenerSesion()
+  if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  const productos = await prisma.producto.findMany({
+    where: { activo: true },
+    orderBy: { nombre: 'asc' },
+  })
+  return NextResponse.json({ productos })
+}
+
+export async function POST(request: NextRequest) {
+  const sesion = await obtenerSesion()
+  if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  if (!sesion.permisos.includes('administrar_productos')) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+
+  try {
+    const body = await request.json()
+    const data = productoSchema.parse(body)
+
+    const producto = await prisma.producto.create({
+      data: {
+        ...data,
+        codigoBarras: data.codigoBarras || null,
+        inventario: {
+          create: { cantidad: 0 },
+        },
+      },
+    })
+
+    return NextResponse.json({ producto }, { status: 201 })
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos', detalles: e.errors }, { status: 400 })
+    }
+    console.error(e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
+}
+
+===== FILE: src/app/api/inventario/route.ts =====
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { obtenerSesion } from '@/lib/auth'
+
+const movimientoSchema = z.object({
+  productoId: z.string(),
+  tipo: z.enum(['ENTRADA', 'SALIDA', 'AJUSTE']),
+  cantidad: z.number().positive(),
+  motivo: z.string().optional(),
+})
+
+export async function GET() {
+  const sesion = await obtenerSesion()
+  if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  const inventario = await prisma.inventario.findMany({
+    include: {
+      producto: {
+        select: { id: true, nombre: true, codigoBarras: true, tipoVenta: true },
+      },
+    },
+    orderBy: { producto: { nombre: 'asc' } },
+  })
+
+  return NextResponse.json({ inventario })
+}
+
+export async function POST(request: NextRequest) {
+  const sesion = await obtenerSesion()
+  if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  if (!sesion.permisos.includes('administrar_inventario')) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+
+  try {
+    const body = await request.json()
+    const { productoId, tipo, cantidad, motivo } = movimientoSchema.parse(body)
+
+    await prisma.$transaction(async (tx) => {
+      await tx.movimientoInventario.create({
+        data: {
+          productoId,
+          tipo,
+          cantidad,
+          motivo,
+          usuarioId: sesion.sub,
+        },
+      })
+
+      const inventario = await tx.inventario.findUnique({ where: { productoId } })
+      if (inventario) {
+        const cantidadActual = parseFloat(inventario.cantidad.toString())
+        let nuevaCantidad: number
+        if (tipo === 'ENTRADA') {
+          nuevaCantidad = cantidadActual + cantidad
+        } else if (tipo === 'SALIDA') {
+          nuevaCantidad = Math.max(0, cantidadActual - cantidad)
+        } else {
+          nuevaCantidad = cantidad
+        }
+        await tx.inventario.update({
+          where: { productoId },
+          data: { cantidad: nuevaCantidad },
+        })
+      } else {
+        await tx.inventario.create({
+          data: { productoId, cantidad },
+        })
+      }
+    })
+
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
+    }
+    console.error(e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
+}
+
+===== FILE: src/app/api/caja/sesion/route.ts =====
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { obtenerSesion } from '@/lib/auth'
+
+const abrirCajaSchema = z.object({
+  cajaId: z.string(),
+  montoInicial: z.number().min(0),
+})
+
+export async function GET() {
+  const sesion = await obtenerSesion()
+  if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  const sesionCaja = await prisma.sesionCaja.findFirst({
+    where: { estado: 'ABIERTA' },
+    include: {
+      caja: {
+        include: { sucursal: true },
+      },
+    },
+    orderBy: { fechaApertura: 'desc' },
+  })
+
+  return NextResponse.json({ sesion: sesionCaja })
+}
+
+export async function POST(request: NextRequest) {
+  const sesion = await obtenerSesion()
+  if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  if (!sesion.permisos.includes('abrir_caja')) {
+    return NextResponse.json({ error: 'Sin permisos para abrir caja' }, { status: 403 })
+  }
+
+  try {
+    const body = await request.json()
+    const { cajaId, montoInicial } = abrirCajaSchema.parse(body)
+
+    const sesionAbierta = await prisma.sesionCaja.findFirst({
+      where: { cajaId, estado: 'ABIERTA' },
+    })
+    if (sesionAbierta) {
+      return NextResponse.json({ error: 'Ya hay una sesión abierta para esta caja' }, { status: 400 })
+    }
+
+    const nuevaSesion = await prisma.sesionCaja.create({
+      data: {
+        cajaId,
+        usuarioAperturaId: sesion.sub,
+        montoInicial,
+      },
+      include: {
+        caja: { include: { sucursal: true } },
+      },
+    })
+
+    return NextResponse.json({ sesion: nuevaSesion }, { status: 201 })
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
+    }
+    console.error(e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
+}
+
+===== FILE: src/app/api/caja/sesion/[id]/route.ts =====
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { obtenerSesion } from '@/lib/auth'
+
+const cerrarCajaSchema = z.object({
+  montoContado: z.number().min(0),
+  observaciones: z.string().optional(),
+})
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const sesion = await obtenerSesion()
+  if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  if (!sesion.permisos.includes('cerrar_caja')) {
+    return NextResponse.json({ error: 'Sin permisos para cerrar caja' }, { status: 403 })
+  }
+
+  const params = await context.params
+
+  try {
+    const body = await request.json()
+    const { montoContado, observaciones } = cerrarCajaSchema.parse(body)
+
+    const sesionCaja = await prisma.sesionCaja.findUnique({ where: { id: params.id } })
+    if (!sesionCaja || sesionCaja.estado !== 'ABIERTA') {
+      return NextResponse.json({ error: 'Sesión no encontrada o ya cerrada' }, { status: 404 })
+    }
+
+    const diferencia = montoContado - parseFloat(sesionCaja.montoInicial.toString())
+
+    const sesionActualizada = await prisma.sesionCaja.update({
+      where: { id: params.id },
+      data: {
+        estado: 'CERRADA',
+        fechaCierre: new Date(),
+        montoContado,
+        diferencia,
+        observaciones,
+      },
+    })
+
+    return NextResponse.json({ sesion: sesionActualizada })
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })
+    }
+    console.error(e)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
+}
+
+===== FILE: Dockerfile =====
+FROM node:20-alpine AS base
+
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+CMD ["sh", "docker-entrypoint.sh"]
+
+===== FILE: docker-compose.yml =====
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: iapos
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/iapos
+      JWT_SECRET: ${JWT_SECRET:-cambia-esto-en-produccion-minimo-32-caracteres}
+      NODE_ENV: production
+    command: ["sh", "docker-entrypoint.sh"]
+
+volumes:
+  postgres_data:
