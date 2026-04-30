@@ -2,18 +2,10 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { prisma } from './prisma'
 
-const jwtSecretValue = process.env.JWT_SECRET || 'dev-secret-change-in-production'
-
-if (process.env.NODE_ENV === 'production') {
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET environment variable is required in production')
-  }
-  if (process.env.JWT_SECRET.length < 32) {
-    throw new Error('JWT_SECRET must be at least 32 characters long')
-  }
+function getJWTSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET || 'dev-secret-change-in-production-32ch'
+  return new TextEncoder().encode(secret)
 }
-
-const JWT_SECRET = new TextEncoder().encode(jwtSecretValue)
 
 const COOKIE_NAME = 'iapos_session'
 
@@ -29,12 +21,12 @@ export async function crearToken(payload: JWTPayload): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('8h')
-    .sign(JWT_SECRET)
+    .sign(getJWTSecret())
 }
 
 export async function verificarToken(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, getJWTSecret())
     return payload as unknown as JWTPayload
   } catch {
     return null

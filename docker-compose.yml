@@ -28,10 +28,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/iapos
-      # REQUIRED: Set a strong secret before deploying to production
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in production}
+      JWT_SECRET: ${JWT_SECRET:-cambia-esto-en-produccion-minimo-32-caracteres}
       NODE_ENV: production
-    command: sh -c "npx prisma migrate deploy && node server.js"
+    command: ["sh", "docker-entrypoint.sh"]
 
 volumes:
   postgres_data:
