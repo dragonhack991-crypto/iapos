@@ -6,7 +6,7 @@ Sistema de punto de venta moderno construido con **Next.js**, **PostgreSQL** y *
 
 ## Requisitos
 
-- [Docker](https://docs.docker.com/get-docker/) y [Docker Compose](https://docs.docker.com/compose/install/) (v2+)
+- [Docker](https://docs.docker.com/get-docker/) y [Docker Compose](https://docs.docker.com/compose/install/) v2+
 - O bien: Node.js 20+ y PostgreSQL 14+ para desarrollo local
 
 ---
@@ -26,23 +26,128 @@ cd iapos
 cp .env.example .env
 ```
 
-Edita el archivo `.env` y cambia al menos `JWT_SECRET` por una cadena segura de 32+ caracteres.
+Edita `.env` y cambia `JWT_SECRET` por una cadena segura de 32+ caracteres.
 
-### 3. Levantar el sistema
+### 3. Primer arranque (fresh start)
 
 ```bash
-docker compose up -d
+docker compose up --build
 ```
 
-La primera vez tardará unos minutos en descargar las imágenes y construir la aplicación.
+Esto:
+- Construye la imagen `iapos-app:latest` desde cero
+- Levanta la base de datos PostgreSQL y espera a que esté lista
+- Aplica automáticamente las migraciones de Prisma (`migrate deploy`)
+- Inicia el servidor Next.js en el puerto 3000
 
 ### 4. Abrir en el navegador
 
 Visita [http://localhost:3000](http://localhost:3000)
 
-El sistema te redirigirá automáticamente al flujo de **configuración inicial** donde podrás:
+El sistema te redirigirá al flujo de **configuración inicial** donde podrás:
 - Ingresar el nombre de tu negocio
 - Crear el usuario administrador
+
+---
+
+## Comandos Docker habituales
+
+### Arranque normal (sin rebuild)
+
+```bash
+docker compose up
+```
+
+Levanta los servicios usando la imagen ya construida.
+
+### Rebuild completo (tras cambios de código)
+
+```bash
+docker compose build --no-cache
+docker compose up
+```
+
+### Rebuild solo de la app
+
+```bash
+docker compose build --no-cache app
+docker compose up
+```
+
+### Parar y limpiar volúmenes (borrar datos)
+
+```bash
+docker compose down -v
+```
+
+> ⚠️ Esto elimina la base de datos. Úsalo solo para un reset total.
+
+### Reset total + rebuild limpio
+
+```bash
+docker compose down -v --remove-orphans
+docker builder prune -af
+docker compose up --build
+```
+
+---
+
+## Solución de problemas
+
+### Error: `invalid file request node_modules/.bin/...`
+
+Causado por un `.dockerignore` ausente o mal configurado que envía `node_modules` del host al daemon de Docker.
+
+**Solución:** El `.dockerignore` en la raíz del proyecto ya excluye `node_modules`. Si el error persiste, borra `node_modules` local antes de hacer build:
+
+```bash
+# Linux/macOS
+rm -rf node_modules
+
+# Windows (PowerShell)
+Remove-Item -Recurse -Force node_modules
+```
+
+Luego:
+```bash
+docker builder prune -af
+docker compose up --build
+```
+
+### Error: Prisma `P1012` o conflicto de versiones
+
+El proyecto fija **Prisma 5.22.0** exacto en `package.json` para evitar que `npm ci` instale versiones incompatibles. No uses `npx prisma@latest` ni `npx prisma@7` en contenedores.
+
+Las migraciones se aplican automáticamente al iniciar el contenedor usando el binario Prisma incluido en la imagen (`/app/node_modules/prisma/build/index.js`).
+
+### Error: `EACCES` en migración
+
+Si ves errores de permisos en la migración, verifica que el `docker-entrypoint.sh` use el binario local de Prisma (no `npx`). El entrypoint actual ya lo hace correctamente.
+
+### Ver logs de cada servicio
+
+```bash
+# Ver todos los logs
+docker compose logs -f
+
+# Solo logs de la app
+docker compose logs -f app
+
+# Solo logs de la base de datos
+docker compose logs -f db
+```
+
+### Verificar estado de la base de datos
+
+```bash
+docker compose exec db psql -U postgres -d iapos -c "\dt"
+```
+
+### Forzar re-aplicación del esquema (desarrollo)
+
+```bash
+docker compose exec app node /app/node_modules/prisma/build/index.js migrate deploy
+```
 
 ---
 
@@ -91,7 +196,7 @@ Visita [http://localhost:3000](http://localhost:3000)
 
 | Variable        | Descripción                                         | Ejemplo                              |
 |-----------------|-----------------------------------------------------|--------------------------------------|
-| `DATABASE_URL`  | URL de conexión a PostgreSQL                        | `postgresql://user:pass@db:5432/iapos` |
+| `DATABASE_URL`  | URL de conexión a PostgreSQL                        | `postgresql://user:pass@db:5432/iapos?schema=public` |
 | `JWT_SECRET`    | Secreto para firmar tokens JWT (mín. 32 caracteres) | `mi-secreto-super-seguro-para-prod`  |
 | `NODE_ENV`      | Entorno de ejecución                                | `production` / `development`         |
 
@@ -155,12 +260,35 @@ Visita [http://localhost:3000](http://localhost:3000)
 
 ---
 
+## Arquitectura Docker
+
+```
+docker compose up --build
+│
+├── db (postgres:16-alpine)
+│   └── healthcheck: pg_isready -U postgres -d iapos
+│
+└── app (iapos-app:latest)  ← depends_on: db healthy
+    ├── docker-entrypoint.sh
+    │   ├── prisma migrate deploy  (usa binario local, sin npx)
+    │   └── node /app/server.js   (Next.js standalone)
+    └── :3000
+```
+
+**Versiones fijadas:**
+- Prisma CLI + Client: `5.22.0` (exacto, sin `^`)
+- Node.js: `20-alpine`
+- PostgreSQL: `16-alpine`
+
+---
+
 ## Estructura del proyecto
 
 ```
 iapos/
 ├── prisma/
 │   ├── schema.prisma       # Modelos de base de datos
+│   ├── migrations/         # Historial de migraciones SQL
 │   └── seed.ts             # Datos semilla
 ├── src/
 │   ├── app/
@@ -170,9 +298,11 @@ iapos/
 │   │   └── setup/          # Configuración inicial
 │   ├── components/         # Componentes reutilizables
 │   └── lib/                # Utilidades (prisma, auth)
-├── Dockerfile
-├── docker-compose.yml
-└── .env.example
+├── .dockerignore           # Excluye node_modules y artefactos del contexto de build
+├── Dockerfile              # Multi-stage build: deps → builder → runner (alpine)
+├── docker-compose.yml      # Orquestación: db + app con migración automática
+├── docker-entrypoint.sh    # Aplica migraciones y arranca Next.js
+└── .env.example            # Plantilla de variables de entorno
 ```
 
 ---
