@@ -10,7 +10,7 @@ const cerrarCajaSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   const sesion = await obtenerSesion()
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -18,6 +18,8 @@ export async function PATCH(
   if (!sesion.permisos.includes('cerrar_caja')) {
     return NextResponse.json({ error: 'Sin permisos para cerrar caja' }, { status: 403 })
   }
+
+  const params = await Promise.resolve(context.params)
 
   try {
     const body = await request.json()
