@@ -28,7 +28,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/iapos
-      JWT_SECRET: ${JWT_SECRET:-cambia-esto-por-un-secreto-seguro-de-al-menos-32-caracteres}
+      # REQUIRED: Set a strong secret before deploying to production
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in production}
       NODE_ENV: production
     command: sh -c "npx prisma migrate deploy && node server.js"
 
