@@ -23,6 +23,12 @@ export default function InventarioPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const cancelarAjuste = useCallback(() => {
+    setAjuste(null)
+    setCantidad('')
+    setMotivo('')
+  }, [])
+
   const cargarInventario = useCallback(async () => {
     try {
       const res = await fetch('/api/inventario')
@@ -121,7 +127,7 @@ export default function InventarioPage() {
                 {submitting ? 'Guardando...' : 'Guardar'}
               </button>
               <button
-                onClick={() => { setAjuste(null); setCantidad(''); setMotivo('') }}
+                onClick={cancelarAjuste}
                 className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-4 py-2 rounded-lg transition"
               >
                 Cancelar

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { obtenerSesion } from '@/lib/auth'
 import Link from 'next/link'
+import LogoutButton from '@/components/LogoutButton'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const sesion = await obtenerSesion()
@@ -24,14 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           )}
         </nav>
         <div className="p-4 border-t border-gray-200">
-          <form action="/api/auth/logout" method="POST">
-            <button
-              type="submit"
-              className="w-full text-left text-sm text-gray-600 hover:text-red-600 transition px-3 py-2 rounded-lg hover:bg-red-50"
-            >
-              🚪 Cerrar sesión
-            </button>
-          </form>
+          <LogoutButton />
         </div>
       </aside>
 
