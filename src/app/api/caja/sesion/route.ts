@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { obtenerSesion } from '@/lib/auth'
+import { obtenerSesionDesdeRequest } from '@/lib/auth'
 
 const abrirCajaSchema = z.object({
   cajaId: z.string(),
   montoInicial: z.number().min(0),
 })
 
-export async function GET() {
-  const sesion = await obtenerSesion()
+export async function GET(request: NextRequest) {
+  const sesion = await obtenerSesionDesdeRequest(request)
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  const puedeVerCaja = sesion.permisos.some(p => ['abrir_caja', 'cerrar_caja'].includes(p))
+  if (!puedeVerCaja) {
+    return NextResponse.json({ error: 'Sin permisos para ver sesión de caja' }, { status: 403 })
+  }
 
   const sesionCaja = await prisma.sesionCaja.findFirst({
     where: { estado: 'ABIERTA' },
@@ -26,7 +31,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const sesion = await obtenerSesion()
+  const sesion = await obtenerSesionDesdeRequest(request)
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   if (!sesion.permisos.includes('abrir_caja')) {

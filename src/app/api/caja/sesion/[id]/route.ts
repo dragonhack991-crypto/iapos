@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { obtenerSesion } from '@/lib/auth'
+import { obtenerSesionDesdeRequest } from '@/lib/auth'
 
 const cerrarCajaSchema = z.object({
   montoContado: z.number().min(0),
@@ -12,7 +12,7 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const sesion = await obtenerSesion()
+  const sesion = await obtenerSesionDesdeRequest(request)
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   if (!sesion.permisos.includes('cerrar_caja')) {
@@ -30,6 +30,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Sesión no encontrada o ya cerrada' }, { status: 404 })
     }
 
+    // Sprint 1: diferencia calculada contra el monto inicial de apertura.
+    // No contempla movimientos registrados durante la sesión.
+    // En sprints posteriores se calculará contra el saldo esperado
+    // (monto inicial + ingresos - egresos de la sesión).
     const diferencia = montoContado - parseFloat(sesionCaja.montoInicial.toString())
 
     const sesionActualizada = await prisma.sesionCaja.update({
@@ -43,7 +47,11 @@ export async function PATCH(
       },
     })
 
-    return NextResponse.json({ sesion: sesionActualizada })
+    return NextResponse.json({
+      sesion: sesionActualizada,
+      // Aviso: diferencia calculada solo contra monto inicial (Sprint 1)
+      nota: 'Diferencia calculada respecto al monto inicial de apertura. No incluye movimientos de sesión.',
+    })
   } catch (e) {
     if (e instanceof z.ZodError) {
       return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })

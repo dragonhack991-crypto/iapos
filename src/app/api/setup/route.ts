@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
 const setupSchema = z.object({
@@ -14,24 +15,25 @@ const setupSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const existente = await prisma.configuracionSistema.findUnique({
-      where: { clave: 'configurado' },
-    })
-    if (existente) {
-      return NextResponse.json({ error: 'El sistema ya está configurado' }, { status: 400 })
-    }
-
     const body = await request.json()
     const { nombreNegocio, admin } = setupSchema.parse(body)
-
-    const usuarioExistente = await prisma.usuario.findUnique({ where: { email: admin.email } })
-    if (usuarioExistente) {
-      return NextResponse.json({ error: 'Ya existe un usuario con ese correo' }, { status: 400 })
-    }
 
     const passwordHash = await bcrypt.hash(admin.password, 12)
 
     await prisma.$transaction(async (tx) => {
+      // Verificación dentro de la transacción para evitar condición de carrera
+      const yaConfigurado = await tx.configuracionSistema.findUnique({
+        where: { clave: 'configurado' },
+      })
+      if (yaConfigurado) {
+        throw new Error('YA_CONFIGURADO')
+      }
+
+      const usuarioExistente = await tx.usuario.findUnique({ where: { email: admin.email } })
+      if (usuarioExistente) {
+        throw new Error('EMAIL_DUPLICADO')
+      }
+
       const permisos = [
         'ver_dashboard', 'vender', 'cancelar_venta', 'abrir_caja', 'cerrar_caja',
         'administrar_usuarios', 'administrar_inventario', 'ver_reportes',
@@ -81,16 +83,30 @@ export async function POST(request: NextRequest) {
         create: { id: 'caja-1', nombre: 'Caja 1', sucursalId: sucursal.id },
       })
 
+      // Estas claves son únicas en BD; si otra petición concurrent llegó aquí
+      // primero, el create lanzará P2002 que se captura abajo como YA_CONFIGURADO.
       await tx.configuracionSistema.create({
         data: { clave: 'configurado', valor: 'true' },
       })
-      await tx.configuracionSistema.create({
-        data: { clave: 'nombre_negocio', valor: nombreNegocio },
+      await tx.configuracionSistema.upsert({
+        where: { clave: 'nombre_negocio' },
+        update: { valor: nombreNegocio },
+        create: { clave: 'nombre_negocio', valor: nombreNegocio },
       })
     })
 
     return NextResponse.json({ ok: true })
   } catch (e) {
+    if (e instanceof Error && e.message === 'YA_CONFIGURADO') {
+      return NextResponse.json({ error: 'El sistema ya está configurado' }, { status: 409 })
+    }
+    if (e instanceof Error && e.message === 'EMAIL_DUPLICADO') {
+      return NextResponse.json({ error: 'Ya existe un usuario con ese correo' }, { status: 400 })
+    }
+    // Conflicto de clave única en BD (carrera entre peticiones concurrentes)
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      return NextResponse.json({ error: 'El sistema ya está configurado' }, { status: 409 })
+    }
     if (e instanceof z.ZodError) {
       return NextResponse.json({ error: 'Datos inválidos', detalles: e.errors }, { status: 400 })
     }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { obtenerSesion } from '@/lib/auth'
+import { obtenerSesionDesdeRequest } from '@/lib/auth'
 
 const productoSchema = z.object({
   nombre: z.string().min(1),
@@ -15,9 +15,16 @@ const productoSchema = z.object({
   iepsPorcentaje: z.number().min(0).default(0),
 })
 
-export async function GET() {
-  const sesion = await obtenerSesion()
+export async function GET(request: NextRequest) {
+  const sesion = await obtenerSesionDesdeRequest(request)
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  const puedeVerProductos = sesion.permisos.some(p =>
+    ['administrar_productos', 'vender', 'ver_dashboard'].includes(p)
+  )
+  if (!puedeVerProductos) {
+    return NextResponse.json({ error: 'Sin permisos para ver productos' }, { status: 403 })
+  }
 
   const productos = await prisma.producto.findMany({
     where: { activo: true },
@@ -27,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const sesion = await obtenerSesion()
+  const sesion = await obtenerSesionDesdeRequest(request)
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   if (!sesion.permisos.includes('administrar_productos')) {
