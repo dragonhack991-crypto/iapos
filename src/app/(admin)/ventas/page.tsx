@@ -11,7 +11,7 @@ interface Producto {
   ivaAplica: boolean
   iepsAplica: boolean
   iepsPorcentaje: string
-  inventario?: { cantidad: string }
+inventario?: { cantidad: string | number } | null
 }
 
 interface CarritoItem {
@@ -29,14 +29,25 @@ interface SesionCaja {
 
 const IVA = 0.16
 
+function getStock(producto: Producto): number {
+  const raw = producto.inventario?.cantidad
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  return Number.isFinite(n) ? n : 0
+}
+
+function toNumber(value: string | number | null | undefined, fallback = 0) {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
 function calcularTotales(carrito: CarritoItem[]) {
   let subtotal = 0
   let totalIva = 0
   let totalIeps = 0
 
   for (const item of carrito) {
-    const precio = item.precioUnitario
-    const iepsPct = parseFloat(item.producto.iepsPorcentaje) / 100
+    const precio = toNumber(item.precioUnitario)
+    const iepsPct = toNumber(item.producto.iepsPorcentaje) / 100
     const ieps = item.producto.iepsAplica ? precio * iepsPct * item.cantidad : 0
     const baseIva = item.producto.iepsAplica
       ? (precio - precio * iepsPct) * item.cantidad
@@ -91,7 +102,7 @@ export default function VentasPage() {
   }, [cargarDatos])
 
   function agregarAlCarrito(producto: Producto) {
-    const stock = parseFloat(producto.inventario?.cantidad ?? '0')
+    const stock = getStock(producto)
     setCarrito((prev) => {
       const existente = prev.find((i) => i.producto.id === producto.id)
       if (existente) {
@@ -109,7 +120,7 @@ export default function VentasPage() {
         setError(`Sin stock disponible para "${producto.nombre}"`)
         return prev
       }
-      const precioUnitario = parseFloat(producto.precioVenta)
+      const precioUnitario = toNumber(producto.precioVenta, 0) // ✅
       return [
         ...prev,
         { producto, cantidad: 1, precioUnitario, subtotal: precioUnitario },
@@ -150,7 +161,7 @@ export default function VentasPage() {
       setError('El carrito está vacío.')
       return
     }
-    if (metodoPago === 'EFECTIVO' && pagoCon && parseFloat(pagoCon) < totales.total) {
+    if (metodoPago === 'EFECTIVO' && pagoCon && toNumber(pagoCon, 0) < totales.total) {
       setError(`El pago (${pagoCon}) es menor al total ($${totales.total.toFixed(2)})`)
       return
     }
@@ -169,7 +180,7 @@ export default function VentasPage() {
             productoId: i.producto.id,
             cantidad: i.cantidad,
           })),
-          pagoCon: metodoPago === 'EFECTIVO' && pagoCon ? parseFloat(pagoCon) : undefined,
+          pagoCon: metodoPago === 'EFECTIVO' && pagoCon ? toNumber(pagoCon, 0) : undefined,
         }),
       })
 
@@ -179,10 +190,9 @@ export default function VentasPage() {
         return
       }
 
-      const cambio = data.venta.cambio ? parseFloat(data.venta.cambio) : null
+      const cambio = data.venta.cambio ? toNumber(data.venta.cambio, 0) : null
       limpiarCarrito()
       setVentaExitosa({ folio: data.venta.folio, cambio })
-      // Refresh products (stock updated)
       const resP = await fetch('/api/productos')
       if (resP.ok) {
         const dp = await resP.json()
@@ -209,7 +219,6 @@ export default function VentasPage() {
 
   return (
     <div className="flex h-full">
-      {/* Product grid */}
       <div className="flex-1 p-6 overflow-auto">
         <div className="mb-4 flex items-center gap-4">
           <h1 className="text-2xl font-bold text-gray-900">Punto de Venta</h1>
@@ -250,7 +259,8 @@ export default function VentasPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {productosFiltrados.map((producto) => {
-            const stock = parseFloat(producto.inventario?.cantidad ?? '0')
+            console.log('DEBUG producto:', producto.nombre, producto.inventario)
+            const stock = getStock(producto)
             const sinStock = stock <= 0
             return (
               <button
@@ -265,7 +275,7 @@ export default function VentasPage() {
               >
                 <p className="font-medium text-gray-900 text-sm truncate">{producto.nombre}</p>
                 <p className="text-indigo-600 font-bold text-base mt-1">
-                  ${parseFloat(producto.precioVenta).toFixed(2)}
+                  ${toNumber(producto.precioVenta, 0).toFixed(2)}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   Stock: {stock % 1 === 0 ? stock.toFixed(0) : stock.toFixed(3)}
@@ -281,7 +291,6 @@ export default function VentasPage() {
         </div>
       </div>
 
-      {/* Cart sidebar */}
       <div className="w-80 bg-white border-l border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-800">Carrito</h2>
@@ -374,9 +383,9 @@ export default function VentasPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder={totales.total.toFixed(2)}
                 />
-                {pagoCon && parseFloat(pagoCon) >= totales.total && (
+                {pagoCon && toNumber(pagoCon, 0) >= totales.total && (
                   <p className="text-xs text-green-600 mt-1">
-                    Cambio: ${(parseFloat(pagoCon) - totales.total).toFixed(2)}
+                    Cambio: ${(toNumber(pagoCon, 0) - totales.total).toFixed(2)}
                   </p>
                 )}
               </div>

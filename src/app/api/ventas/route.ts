@@ -62,10 +62,10 @@ export async function POST(request: NextRequest) {
     throw e
   }
 
-  // Verify cash session exists and is open
   const sesionCaja = await prisma.sesionCaja.findUnique({
     where: { id: data.sesionCajaId },
   })
+
   if (!sesionCaja || sesionCaja.estado !== 'ABIERTA') {
     return NextResponse.json(
       { error: 'No hay una sesión de caja abierta. Abre la caja antes de realizar ventas.' },
@@ -73,15 +73,22 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Load all products + inventory in one query to avoid N+1
+  // Seguridad/regla negocio: evita usar sesión de caja de otro usuario
+  if (sesionCaja.usuarioAperturaId !== sesion.sub) {
+    return NextResponse.json(
+      { error: 'La sesión de caja no pertenece al usuario actual' },
+      { status: 403 }
+    )
+  }
+
   const productoIds = data.detalles.map((d) => d.productoId)
   const productos = await prisma.producto.findMany({
     where: { id: { in: productoIds }, activo: true },
     include: { inventario: true },
   })
 
-  // Validate all products exist and are active
   const productoMap = new Map(productos.map((p) => [p.id, p]))
+
   for (const detalle of data.detalles) {
     if (!productoMap.has(detalle.productoId)) {
       return NextResponse.json(
@@ -91,10 +98,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Pre-validate stock for all items (fail-fast before touching DB)
   for (const detalle of data.detalles) {
     const producto = productoMap.get(detalle.productoId)!
-    const stockActual = parseFloat(producto.inventario?.cantidad.toString() ?? '0')
+    const stockActual = toNumber(producto.inventario?.cantidad, 0)
     if (stockActual < detalle.cantidad) {
       return NextResponse.json(
         {
@@ -107,7 +113,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Calculate totals
   const IVA_RATE = 0.16
   let subtotalTotal = 0
   let totalIvaCalc = 0
@@ -115,10 +120,10 @@ export async function POST(request: NextRequest) {
 
   const detallesCalculados = data.detalles.map((detalle) => {
     const producto = productoMap.get(detalle.productoId)!
-    const precioUnitario = parseFloat(producto.precioVenta.toString())
+    const precioUnitario = toNumber(producto.precioVenta, 0)
     const subtotalLinea = precioUnitario * detalle.cantidad
 
-    const iepsPct = parseFloat(producto.iepsPorcentaje.toString()) / 100
+    const iepsPct = toNumber(producto.iepsPorcentaje, 0) / 100
     const iepsUnitario = producto.iepsAplica ? precioUnitario * iepsPct : 0
     const baseIva = precioUnitario - (producto.iepsAplica ? precioUnitario * iepsPct : 0)
     const ivaUnitario = producto.ivaAplica ? baseIva * IVA_RATE : 0
@@ -144,7 +149,6 @@ export async function POST(request: NextRequest) {
 
   const totalFinal = round2(subtotalTotal + totalIvaCalc + totalIepsCalc)
 
-  // Validate pagoCon for cash payments
   if (data.metodoPago === 'EFECTIVO' && data.pagoCon !== undefined && data.pagoCon < totalFinal) {
     return NextResponse.json(
       { error: `Pago insuficiente. Total: $${totalFinal}, Pago con: $${data.pagoCon}` },
@@ -159,12 +163,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const venta = await prisma.$transaction(async (tx) => {
-      // Re-validate stock inside transaction (prevent race conditions)
       for (const detalle of data.detalles) {
         const inv = await tx.inventario.findUnique({
           where: { productoId: detalle.productoId },
         })
-        const stockActual = parseFloat(inv?.cantidad.toString() ?? '0')
+        const stockActual = toNumber(inv?.cantidad, 0)
         if (stockActual < detalle.cantidad) {
           const producto = productoMap.get(detalle.productoId)!
           throw new StockError(
@@ -174,7 +177,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Create the sale
       const nuevaVenta = await tx.venta.create({
         data: {
           sesionCajaId: data.sesionCajaId,
@@ -197,7 +199,6 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // Update inventory and record movements
       for (const detalle of data.detalles) {
         await tx.inventario.update({
           where: { productoId: detalle.productoId },
@@ -238,6 +239,11 @@ export async function POST(request: NextRequest) {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : fallback
 }
 
 class StockError extends Error {

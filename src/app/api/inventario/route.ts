@@ -23,7 +23,13 @@ export async function GET() {
     orderBy: { producto: { nombre: 'asc' } },
   })
 
-  return NextResponse.json({ inventario })
+  // ✅ Normalizar Decimal/string -> number para frontend
+  const inventarioNormalizado = inventario.map((item) => ({
+    ...item,
+    cantidad: Number(item.cantidad),
+  }))
+
+  return NextResponse.json({ inventario: inventarioNormalizado })
 }
 
 export async function POST(request: NextRequest) {
@@ -51,7 +57,7 @@ export async function POST(request: NextRequest) {
 
       const inventario = await tx.inventario.findUnique({ where: { productoId } })
       if (inventario) {
-        const cantidadActual = parseFloat(inventario.cantidad.toString())
+        const cantidadActual = Number(inventario.cantidad)
         let nuevaCantidad: number
         if (tipo === 'ENTRADA') {
           nuevaCantidad = cantidadActual + cantidad
