@@ -227,6 +227,108 @@ Visita [http://localhost:3000](http://localhost:3000)
 
 ---
 
+## Flujo operativo diario (POS)
+
+```
+1. Abrir caja  →  POST /api/caja/sesion
+2. Realizar ventas  →  POST /api/ventas  (requiere sesión de caja abierta)
+3. Cerrar caja  →  PATCH /api/caja/sesion/:id
+```
+
+### Reglas de negocio
+- **No se puede vender sin caja abierta.** El sistema retorna `409 Conflict` si no hay sesión activa.
+- **El stock se valida antes y dentro de la transacción** (protección contra race conditions).
+- **La venta es atómica**: si falla cualquier paso (stock, DB, etc.), no se persiste nada.
+
+---
+
+## API de Ventas
+
+### `GET /api/ventas`
+Lista todas las ventas. Requiere permiso `vender` o `ver_reportes`.
+
+### `POST /api/ventas`
+Crea una venta nueva de forma transaccional.
+
+**Payload:**
+```json
+{
+  "sesionCajaId": "string (requerido)",
+  "metodoPago": "EFECTIVO | TARJETA | TRANSFERENCIA",
+  "pagoCon": 200.00,
+  "detalles": [
+    { "productoId": "string", "cantidad": 2 }
+  ]
+}
+```
+
+**Respuestas:**
+| Status | Descripción |
+|--------|-------------|
+| `201`  | Venta creada exitosamente |
+| `400`  | Payload inválido (validación Zod) |
+| `401`  | No autenticado |
+| `403`  | Sin permiso `vender` |
+| `409`  | Sin sesión de caja abierta |
+| `422`  | Stock insuficiente o pago insuficiente (efectivo) |
+| `500`  | Error interno |
+
+### `GET /api/ventas/:id`
+Obtiene el detalle completo de una venta.
+
+### `GET /api/ventas/:id/ticket`
+Devuelve los datos estructurados para imprimir el ticket de la venta.
+
+**Respuesta:**
+```json
+{
+  "ticket": {
+    "negocio": "Mi Tienda",
+    "sucursal": "Sucursal Principal",
+    "caja": "Caja 1",
+    "cajero": "Juan López",
+    "folio": 42,
+    "fecha": "2024-01-15T14:30:00Z",
+    "metodoPago": "EFECTIVO",
+    "items": [...],
+    "subtotal": 100.00,
+    "totalIva": 16.00,
+    "totalIeps": 0.00,
+    "total": 116.00,
+    "pagoCon": 200.00,
+    "cambio": 84.00
+  }
+}
+```
+
+---
+
+## API de Caja
+
+### `GET /api/caja/sesion`
+Obtiene la sesión de caja actualmente abierta.
+
+### `POST /api/caja/sesion`
+Abre una nueva sesión de caja.
+
+**Payload:**
+```json
+{ "cajaId": "caja-1", "montoInicial": 500.00 }
+```
+
+### `PATCH /api/caja/sesion/:id`
+Cierra la sesión de caja. Calcula la diferencia entre monto contado e inicial.
+
+**Payload:**
+```json
+{ "montoContado": 1250.00, "observaciones": "Sin novedades" }
+```
+
+### `GET /api/caja/cajas`
+Lista las cajas disponibles (activas).
+
+---
+
 ## Módulos del Sprint 1
 
 ### 🔐 Autenticación y Autorización
@@ -257,6 +359,24 @@ Visita [http://localhost:3000](http://localhost:3000)
 ### 👥 Usuarios
 - Alta de usuarios con asignación de rol
 - Gestión desde panel de administración
+
+---
+
+## Módulos del Sprint 2
+
+### 🛒 Ventas (POS)
+- Pantalla POS con catálogo de productos y carrito de compra
+- Búsqueda de productos por nombre o código de barras
+- Soporte de métodos de pago: Efectivo, Tarjeta, Transferencia
+- Cálculo automático de IVA (16%) e IEPS por producto
+- Cálculo de cambio para pagos en efectivo
+- Checkout **transaccional atómico**: venta + detalle + descuento de stock en una sola transacción
+- **Validación de stock server-side** (pre-validación + re-validación intra-transacción)
+- **Enforcement de sesión de caja abierta** antes de permitir ventas
+- Folio consecutivo automático por venta
+- Datos de ticket estructurados (`GET /api/ventas/:id/ticket`)
+- Movimientos de inventario registrados automáticamente con referencia a la venta
+- Tests unitarios con **Vitest** (cálculos, stock, sesión de caja, cambio)
 
 ---
 
@@ -323,9 +443,21 @@ iapos/
 - [x] UI en español (es-MX), mobile-first, responsive
 - [x] README con instrucciones completas
 
+## Alcance Sprint 2 ✅
+
+- [x] Modelos `Venta` y `VentaDetalle` con migración
+- [x] `POST /api/ventas` — checkout transaccional atómico con validación de stock
+- [x] `GET /api/ventas` — listado de ventas
+- [x] `GET /api/ventas/:id` — detalle de venta
+- [x] `GET /api/ventas/:id/ticket` — datos de ticket imprimible
+- [x] `GET /api/caja/cajas` — listado de cajas disponibles
+- [x] Enforcement de sesión de caja abierta en endpoint de ventas
+- [x] Pantalla POS (`/ventas`) con carrito, búsqueda, cobro y cambio
+- [x] Tests unitarios (Vitest): cálculos, stock, sesión de caja, cambio
+- [x] Documentación de API actualizada en README
+
 ## Pendientes para siguientes sprints
 
-- [ ] POS completo: pantalla de venta, carrito, cobro
 - [ ] Compras y proveedores
 - [ ] Promociones y descuentos
 - [ ] Reportes avanzados (ventas, inventario, caja)
@@ -333,8 +465,9 @@ iapos/
 - [ ] Múltiples sucursales
 - [ ] Backups automáticos
 - [ ] Configuración de IVA general y por país
-- [ ] Impresión de tickets
+- [ ] Impresión directa de tickets (ESC/POS)
 - [ ] Historial de sesiones de caja en UI
+- [ ] Cancelación/devolución de ventas
 
 ---
 

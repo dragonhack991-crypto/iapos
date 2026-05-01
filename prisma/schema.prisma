@@ -19,6 +19,7 @@ model Usuario {
   roles        UsuarioRol[]
   sesionesApertura SesionCaja[] @relation("UsuarioApertura")
   movimientos  MovimientoInventario[]
+  ventas       Venta[]
 
   @@map("usuarios")
 }
@@ -112,6 +113,7 @@ model SesionCaja {
   estado         EstadoSesion @default(ABIERTA)
   caja           Caja      @relation(fields: [cajaId], references: [id])
   usuarioApertura Usuario  @relation("UsuarioApertura", fields: [usuarioAperturaId], references: [id])
+  ventas         Venta[]
 
   @@map("sesiones_caja")
 }
@@ -137,6 +139,7 @@ model Producto {
   actualizadoEn DateTime      @updatedAt
   inventario   Inventario?
   movimientos  MovimientoInventario[]
+  ventaDetalles VentaDetalle[]
 
   @@map("productos")
 }
@@ -164,9 +167,11 @@ model MovimientoInventario {
   cantidad   Decimal      @db.Decimal(10, 3)
   motivo     String?
   usuarioId  String?
+  ventaId    String?
   creadoEn   DateTime     @default(now())
   producto   Producto     @relation(fields: [productoId], references: [id])
   usuario    Usuario?     @relation(fields: [usuarioId], references: [id])
+  venta      Venta?       @relation(fields: [ventaId], references: [id])
 
   @@map("movimientos_inventario")
 }
@@ -175,4 +180,53 @@ enum TipoMovimiento {
   ENTRADA
   SALIDA
   AJUSTE
+}
+
+enum EstadoVenta {
+  COMPLETADA
+  CANCELADA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+}
+
+model Venta {
+  id             String       @id @default(cuid())
+  folio          Int          @unique @default(autoincrement())
+  sesionCajaId   String
+  usuarioId      String
+  metodoPago     MetodoPago   @default(EFECTIVO)
+  subtotal       Decimal      @db.Decimal(10, 2)
+  totalIva       Decimal      @db.Decimal(10, 2)
+  totalIeps      Decimal      @db.Decimal(10, 2)
+  total          Decimal      @db.Decimal(10, 2)
+  pagoCon        Decimal?     @db.Decimal(10, 2)
+  cambio         Decimal?     @db.Decimal(10, 2)
+  estado         EstadoVenta  @default(COMPLETADA)
+  creadoEn       DateTime     @default(now())
+  sesionCaja     SesionCaja   @relation(fields: [sesionCajaId], references: [id])
+  usuario        Usuario      @relation(fields: [usuarioId], references: [id])
+  detalles       VentaDetalle[]
+  movimientos    MovimientoInventario[]
+
+  @@map("ventas")
+}
+
+model VentaDetalle {
+  id           String   @id @default(cuid())
+  ventaId      String
+  productoId   String
+  cantidad     Decimal  @db.Decimal(10, 3)
+  precioUnitario Decimal @db.Decimal(10, 2)
+  subtotal     Decimal  @db.Decimal(10, 2)
+  ivaUnitario  Decimal  @db.Decimal(10, 2)
+  iepsUnitario Decimal  @db.Decimal(10, 2)
+  total        Decimal  @db.Decimal(10, 2)
+  venta        Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  producto     Producto @relation(fields: [productoId], references: [id])
+
+  @@map("venta_detalles")
 }
