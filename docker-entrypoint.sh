@@ -1,8 +1,9 @@
 #!/bin/sh
-set -e
+set -eu
 
-echo "Ejecutando migraciones de base de datos..."
-node node_modules/prisma/build/index.js migrate deploy
+echo "Running Prisma migrations..."
+# Use the bundled Prisma CLI directly — avoids npx network downloads and permission issues
+node /app/node_modules/prisma/build/index.js migrate deploy
 
-echo "Iniciando servidor..."
-exec node server.js
+echo "Starting Next.js server..."
+exec node /app/server.js

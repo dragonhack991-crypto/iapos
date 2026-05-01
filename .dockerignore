@@ -1,0 +1,38 @@
+# Dependencies - critical: prevents invalid file request errors on Windows paths
+node_modules
+**/node_modules
+
+# Next.js build output
+.next
+**/.next
+out
+
+# Version control
+.git
+.gitignore
+
+# Dockerfile itself (not needed in build context)
+Dockerfile*
+
+# Environment files (secrets must not be baked into the image)
+.env
+.env.*
+*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Build artifacts
+dist
+build
+coverage
+
+# OS / editor artifacts
+.DS_Store
+*.pem
+.vscode
+.idea
