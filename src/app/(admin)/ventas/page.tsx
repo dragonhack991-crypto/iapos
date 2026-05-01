@@ -180,7 +180,6 @@ export default function VentasPage() {
       }
 
       const cambio = data.venta.cambio ? parseFloat(data.venta.cambio) : null
-      setVentaExitosa({ folio: data.venta.folio, cambio })
       limpiarCarrito()
       setVentaExitosa({ folio: data.venta.folio, cambio })
       // Refresh products (stock updated)
