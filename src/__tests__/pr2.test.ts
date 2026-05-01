@@ -54,7 +54,7 @@ function calcularCorteZ(ventas: VentaParaCorte[], montoInicial: number) {
 
 type EstadoVenta = 'COMPLETADA' | 'CANCELADA'
 
-function puedecancelarVenta(estado: EstadoVenta): { ok: boolean; error?: string } {
+function puedeancellarVenta(estado: EstadoVenta): { ok: boolean; error?: string } {
   if (estado === 'CANCELADA') {
     return { ok: false, error: 'La venta ya fue cancelada anteriormente' }
   }
@@ -81,9 +81,6 @@ function cancelarVenta(
     reversales,
   }
 }
-
-// Alias for typo-free calls in tests
-const puedeancellarVenta = puedecancelarVenta
 
 function puedecancel(estado: EstadoVenta): { ok: boolean; error?: string } {
   return puedeancellarVenta(estado)
