@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+   binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  nombre       String
+  passwordHash String
+  activo       Boolean        @default(true)
+  creadoEn     DateTime       @default(now())
+  actualizadoEn DateTime      @updatedAt
+  roles        UsuarioRol[]
+  sesionesApertura SesionCaja[] @relation("UsuarioApertura")
+  movimientos  MovimientoInventario[]
+
+  @@map("usuarios")
+}
+
+model Rol {
+  id          String       @id @default(cuid())
+  nombre      String       @unique
+  descripcion String?
+  usuarios    UsuarioRol[]
+  permisos    RolPermiso[]
+  creadoEn    DateTime     @default(now())
+
+  @@map("roles")
+}
+
+model Permiso {
+  id          String       @id @default(cuid())
+  nombre      String       @unique
+  descripcion String?
+  roles       RolPermiso[]
+  creadoEn    DateTime     @default(now())
+
+  @@map("permisos")
+}
+
+model UsuarioRol {
+  usuarioId String
+  rolId     String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  rol       Rol      @relation(fields: [rolId], references: [id], onDelete: Cascade)
+  asignadoEn DateTime @default(now())
+
+  @@id([usuarioId, rolId])
+  @@map("usuario_roles")
+}
+
+model RolPermiso {
+  rolId     String
+  permisoId String
+  rol       Rol     @relation(fields: [rolId], references: [id], onDelete: Cascade)
+  permiso   Permiso @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+  asignadoEn DateTime @default(now())
+
+  @@id([rolId, permisoId])
+  @@map("rol_permisos")
+}
+
+model ConfiguracionSistema {
+  id    String @id @default(cuid())
+  clave String @unique
+  valor String
+  creadoEn DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@map("configuracion_sistema")
+}
+
+model Sucursal {
+  id        String   @id @default(cuid())
+  nombre    String
+  direccion String?
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now())
+  cajas     Caja[]
+
+  @@map("sucursales")
+}
+
+model Caja {
+  id         String      @id @default(cuid())
+  nombre     String
+  sucursalId String
+  activo     Boolean     @default(true)
+  creadoEn   DateTime    @default(now())
+  sucursal   Sucursal    @relation(fields: [sucursalId], references: [id])
+  sesiones   SesionCaja[]
+
+  @@map("cajas")
+}
+
+model SesionCaja {
+  id             String    @id @default(cuid())
+  cajaId         String
+  usuarioAperturaId String
+  fechaApertura  DateTime  @default(now())
+  montoInicial   Decimal   @db.Decimal(10, 2)
+  fechaCierre    DateTime?
+  montoContado   Decimal?  @db.Decimal(10, 2)
+  diferencia     Decimal?  @db.Decimal(10, 2)
+  observaciones  String?
+  estado         EstadoSesion @default(ABIERTA)
+  caja           Caja      @relation(fields: [cajaId], references: [id])
+  usuarioApertura Usuario  @relation("UsuarioApertura", fields: [usuarioAperturaId], references: [id])
+
+  @@map("sesiones_caja")
+}
+
+enum EstadoSesion {
+  ABIERTA
+  CERRADA
+}
+
+model Producto {
+  id           String         @id @default(cuid())
+  nombre       String
+  codigoBarras String?        @unique
+  tipoVenta    TipoVenta      @default(PIEZA)
+  costoActual  Decimal        @db.Decimal(10, 2)
+  margen       Decimal        @db.Decimal(5, 2)
+  precioVenta  Decimal        @db.Decimal(10, 2)
+  ivaAplica    Boolean        @default(true)
+  iepsAplica   Boolean        @default(false)
+  iepsPorcentaje Decimal      @default(0) @db.Decimal(5, 2)
+  activo       Boolean        @default(true)
+  creadoEn     DateTime       @default(now())
+  actualizadoEn DateTime      @updatedAt
+  inventario   Inventario?
+  movimientos  MovimientoInventario[]
+
+  @@map("productos")
+}
+
+enum TipoVenta {
+  PIEZA
+  CAJA
+  GRANEL
+}
+
+model Inventario {
+  id         String   @id @default(cuid())
+  productoId String   @unique
+  cantidad   Decimal  @db.Decimal(10, 3)
+  actualizadoEn DateTime @updatedAt
+  producto   Producto @relation(fields: [productoId], references: [id])
+
+  @@map("inventario")
+}
+
+model MovimientoInventario {
+  id         String       @id @default(cuid())
+  productoId String
+  tipo       TipoMovimiento
+  cantidad   Decimal      @db.Decimal(10, 3)
+  motivo     String?
+  usuarioId  String?
+  creadoEn   DateTime     @default(now())
+  producto   Producto     @relation(fields: [productoId], references: [id])
+  usuario    Usuario?     @relation(fields: [usuarioId], references: [id])
+
+  @@map("movimientos_inventario")
+}
+
+enum TipoMovimiento {
+  ENTRADA
+  SALIDA
+  AJUSTE
+}
