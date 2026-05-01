@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { obtenerSesion } from '@/lib/auth'
+import { Prisma } from '@prisma/client'
 
 const ventaDetalleSchema = z.object({
   productoId: z.string().min(1),
@@ -15,7 +16,7 @@ const ventaSchema = z.object({
   pagoCon: z.number().positive().optional(),
 })
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const sesion = await obtenerSesion()
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
@@ -23,18 +24,69 @@ export async function GET() {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
-  const ventas = await prisma.venta.findMany({
-    include: {
-      usuario: { select: { id: true, nombre: true } },
-      sesionCaja: { include: { caja: { include: { sucursal: true } } } },
-      detalles: {
-        include: { producto: { select: { id: true, nombre: true, codigoBarras: true } } },
-      },
-    },
-    orderBy: { creadoEn: 'desc' },
-  })
+  const { searchParams } = request.nextUrl
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+  const perPage = Math.min(100, Math.max(1, parseInt(searchParams.get('perPage') ?? '20', 10)))
+  const fechaInicio = searchParams.get('fechaInicio')
+  const fechaFin = searchParams.get('fechaFin')
+  const folio = searchParams.get('folio')
+  const metodoPago = searchParams.get('metodoPago')
+  const estado = searchParams.get('estado')
 
-  return NextResponse.json({ ventas })
+  // Build where clause
+  const where: Prisma.VentaWhereInput = {}
+
+  if (fechaInicio || fechaFin) {
+    where.creadoEn = {}
+    if (fechaInicio) where.creadoEn.gte = new Date(fechaInicio)
+    if (fechaFin) {
+      // Include the whole end day
+      const end = new Date(fechaFin)
+      end.setHours(23, 59, 59, 999)
+      where.creadoEn.lte = end
+    }
+  }
+
+  if (folio) {
+    const folioNum = parseInt(folio, 10)
+    if (!isNaN(folioNum)) where.folio = folioNum
+  }
+
+  if (metodoPago && ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA'].includes(metodoPago)) {
+    where.metodoPago = metodoPago as 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'
+  }
+
+  if (estado && ['COMPLETADA', 'CANCELADA'].includes(estado)) {
+    where.estado = estado as 'COMPLETADA' | 'CANCELADA'
+  }
+
+  const [total, ventas] = await Promise.all([
+    prisma.venta.count({ where }),
+    prisma.venta.findMany({
+      where,
+      include: {
+        usuario: { select: { id: true, nombre: true } },
+        canceladoPor: { select: { id: true, nombre: true } },
+        sesionCaja: { include: { caja: { include: { sucursal: true } } } },
+        detalles: {
+          include: { producto: { select: { id: true, nombre: true, codigoBarras: true } } },
+        },
+      },
+      orderBy: { creadoEn: 'desc' },
+      skip: (page - 1) * perPage,
+      take: perPage,
+    }),
+  ])
+
+  return NextResponse.json({
+    ventas,
+    pagination: {
+      total,
+      page,
+      perPage,
+      totalPages: Math.ceil(total / perPage),
+    },
+  })
 }
 
 export async function POST(request: NextRequest) {
