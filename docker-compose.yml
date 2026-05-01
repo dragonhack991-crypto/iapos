@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/iapos?schema=public
-      JWT_SECRET: ${JWT_SECRET:-cambia-esto-en-produccion-minimo-32-caracteres}
+      JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0

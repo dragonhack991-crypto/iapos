@@ -11,9 +11,8 @@ out
 .git
 .gitignore
 
-# Docker config files (not needed in build context)
+# Dockerfile itself (not needed in build context)
 Dockerfile*
-docker-compose*.yml
 
 # Environment files (secrets must not be baked into the image)
 .env
