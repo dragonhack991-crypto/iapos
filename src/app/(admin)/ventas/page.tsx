@@ -27,6 +27,11 @@ interface SesionCaja {
   caja: { nombre: string; sucursal: { nombre: string } }
 }
 
+interface GranelModal {
+  producto: Producto
+  cantidadStr: string
+}
+
 const IVA = 0.16
 
 function getStock(producto: Producto): number {
@@ -38,6 +43,14 @@ function getStock(producto: Producto): number {
 function toNumber(value: string | number | null | undefined, fallback = 0) {
   const n = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(n) ? n : fallback
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+function formatStock(stock: number): string {
+  return stock % 1 === 0 ? stock.toFixed(0) : stock.toFixed(3)
 }
 
 function calcularTotales(carrito: CarritoItem[]) {
@@ -77,6 +90,7 @@ export default function VentasPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [ventaExitosa, setVentaExitosa] = useState<{ folio: number; cambio: number | null } | null>(null)
+  const [granelModal, setGranelModal] = useState<GranelModal | null>(null)
 
   const cargarDatos = useCallback(async () => {
     try {
@@ -103,22 +117,28 @@ export default function VentasPage() {
 
   function agregarAlCarrito(producto: Producto) {
     const stock = getStock(producto)
+    if (stock <= 0) {
+      setError(`Sin stock disponible para "${producto.nombre}"`)
+      return
+    }
+    if (producto.tipoVenta === 'GRANEL') {
+      const existente = carrito.find((i) => i.producto.id === producto.id)
+      setGranelModal({ producto, cantidadStr: existente ? existente.cantidad.toString() : '' })
+      setError(null)
+      return
+    }
     setCarrito((prev) => {
       const existente = prev.find((i) => i.producto.id === producto.id)
       if (existente) {
         if (existente.cantidad >= stock) {
-          setError(`Stock máximo disponible para "${producto.nombre}": ${stock}`)
+          setError(`Stock máximo disponible para "${producto.nombre}": ${formatStock(stock)}`)
           return prev
         }
         return prev.map((i) =>
           i.producto.id === producto.id
-            ? { ...i, cantidad: i.cantidad + 1, subtotal: (i.cantidad + 1) * i.precioUnitario }
+            ? { ...i, cantidad: i.cantidad + 1, subtotal: round2((i.cantidad + 1) * i.precioUnitario) }
             : i
         )
-      }
-      if (stock < 1) {
-        setError(`Sin stock disponible para "${producto.nombre}"`)
-        return prev
       }
       const precioUnitario = toNumber(producto.precioVenta, 0)
       return [
@@ -129,15 +149,54 @@ export default function VentasPage() {
     setError(null)
   }
 
+  function confirmarGranel() {
+    if (!granelModal) return
+    const { producto, cantidadStr } = granelModal
+    const cantidad = parseFloat(cantidadStr)
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      setError('Ingresa una cantidad válida mayor a cero')
+      return
+    }
+    const stock = getStock(producto)
+    if (cantidad > stock) {
+      setError(`Stock máximo disponible para "${producto.nombre}": ${formatStock(stock)}`)
+      return
+    }
+    const precioUnitario = toNumber(producto.precioVenta, 0)
+    setCarrito((prev) => {
+      const existe = prev.some((i) => i.producto.id === producto.id)
+      if (existe) {
+        return prev.map((i) =>
+          i.producto.id === producto.id
+            ? { ...i, cantidad, subtotal: round2(cantidad * i.precioUnitario) }
+            : i
+        )
+      }
+      return [...prev, { producto, cantidad, precioUnitario, subtotal: round2(cantidad * precioUnitario) }]
+    })
+    setGranelModal(null)
+    setError(null)
+  }
+
   function actualizarCantidad(productoId: string, nuevaCantidad: number) {
     if (nuevaCantidad <= 0) {
       setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
+      setError(null)
       return
     }
+    const item = carrito.find((i) => i.producto.id === productoId)
+    if (item) {
+      const stock = getStock(item.producto)
+      if (nuevaCantidad > stock) {
+        setError(`Stock máximo disponible para "${item.producto.nombre}": ${formatStock(stock)}`)
+        return
+      }
+    }
+    setError(null)
     setCarrito((prev) =>
       prev.map((i) =>
         i.producto.id === productoId
-          ? { ...i, cantidad: nuevaCantidad, subtotal: nuevaCantidad * i.precioUnitario }
+          ? { ...i, cantidad: nuevaCantidad, subtotal: round2(nuevaCantidad * i.precioUnitario) }
           : i
       )
     )
@@ -218,6 +277,7 @@ export default function VentasPage() {
   }
 
   return (
+    <>
     <div className="flex h-full">
       <div className="flex-1 p-6 overflow-auto">
         <div className="mb-4 flex items-center gap-4">
@@ -276,9 +336,16 @@ export default function VentasPage() {
                 <p className="text-indigo-600 font-bold text-base mt-1">
                   ${toNumber(producto.precioVenta, 0).toFixed(2)}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Stock: {stock % 1 === 0 ? stock.toFixed(0) : stock.toFixed(3)}
-                </p>
+                <div className="flex items-center justify-between mt-0.5">
+                  <p className="text-xs text-gray-400">
+                    Stock: {formatStock(stock)}
+                  </p>
+                  {producto.tipoVenta === 'GRANEL' && (
+                    <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">
+                      granel
+                    </span>
+                  )}
+                </div>
               </button>
             )
           })}
@@ -310,19 +377,40 @@ export default function VentasPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => actualizarCantidad(item.producto.id, item.cantidad - 1)}
-                    className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm flex items-center justify-center"
-                  >
-                    −
-                  </button>
-                  <span className="w-8 text-center text-sm font-medium">{item.cantidad}</span>
-                  <button
-                    onClick={() => actualizarCantidad(item.producto.id, item.cantidad + 1)}
-                    className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm flex items-center justify-center"
-                  >
-                    +
-                  </button>
+                  {item.producto.tipoVenta === 'GRANEL' ? (
+                    <>
+                      <button
+                        onClick={() => actualizarCantidad(item.producto.id, 0)}
+                        className="w-6 h-6 rounded bg-gray-100 hover:bg-red-100 text-gray-500 text-xs flex items-center justify-center"
+                        title="Eliminar"
+                      >
+                        ✕
+                      </button>
+                      <button
+                        onClick={() => setGranelModal({ producto: item.producto, cantidadStr: item.cantidad.toString() })}
+                        className="min-w-[3rem] px-1.5 h-6 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-xs font-medium"
+                        title="Editar cantidad"
+                      >
+                        {formatStock(item.cantidad)}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => actualizarCantidad(item.producto.id, item.cantidad - 1)}
+                        className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm flex items-center justify-center"
+                      >
+                        −
+                      </button>
+                      <span className="w-8 text-center text-sm font-medium">{item.cantidad}</span>
+                      <button
+                        onClick={() => actualizarCantidad(item.producto.id, item.cantidad + 1)}
+                        className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm flex items-center justify-center"
+                      >
+                        +
+                      </button>
+                    </>
+                  )}
                 </div>
                 <span className="text-sm font-semibold text-gray-900 w-16 text-right">
                   ${item.subtotal.toFixed(2)}
@@ -409,5 +497,48 @@ export default function VentasPage() {
         )}
       </div>
     </div>
+
+    {granelModal && (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl p-6 shadow-xl w-80">
+          <h3 className="font-semibold text-gray-900 mb-1">{granelModal.producto.nombre}</h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Stock disponible: {formatStock(getStock(granelModal.producto))}
+          </p>
+          {error && (
+            <div className="mb-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs">
+              {error}
+            </div>
+          )}
+          <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+          <input
+            type="number"
+            min="0.001"
+            step="0.001"
+            autoFocus
+            value={granelModal.cantidadStr}
+            onChange={(e) => setGranelModal((m) => m ? { ...m, cantidadStr: e.target.value } : m)}
+            onKeyDown={(e) => e.key === 'Enter' && confirmarGranel()}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none mb-4"
+            placeholder="Ej: 0.500"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setGranelModal(null); setError(null) }}
+              className="flex-1 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmarGranel}
+              className="flex-1 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+            >
+              Agregar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   )
 }
