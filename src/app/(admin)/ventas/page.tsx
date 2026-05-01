@@ -11,7 +11,7 @@ interface Producto {
   ivaAplica: boolean
   iepsAplica: boolean
   iepsPorcentaje: string
-inventario?: { cantidad: string | number } | null
+  inventario?: { cantidad: string | number } | null
 }
 
 interface CarritoItem {
@@ -120,7 +120,7 @@ export default function VentasPage() {
         setError(`Sin stock disponible para "${producto.nombre}"`)
         return prev
       }
-      const precioUnitario = toNumber(producto.precioVenta, 0) // ✅
+      const precioUnitario = toNumber(producto.precioVenta, 0)
       return [
         ...prev,
         { producto, cantidad: 1, precioUnitario, subtotal: precioUnitario },
@@ -259,7 +259,6 @@ export default function VentasPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {productosFiltrados.map((producto) => {
-            console.log('DEBUG producto:', producto.nombre, producto.inventario)
             const stock = getStock(producto)
             const sinStock = stock <= 0
             return (
