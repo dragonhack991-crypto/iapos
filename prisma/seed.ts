@@ -1,3 +1,4 @@
+process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/iapos?schema=public'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
