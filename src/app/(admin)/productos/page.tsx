@@ -48,8 +48,8 @@ export default function ProductosPage() {
   const margen = watch('margen')
 
   useEffect(() => {
-    if (costo && margen) {
-      const precio = parseFloat(String(costo)) * (1 + parseFloat(String(margen)) / 100)
+    if (Number.isFinite(costo) && Number.isFinite(margen)) {
+      const precio = costo * (1 + margen / 100)
       setValue('precioVenta', Math.round(precio * 100) / 100)
     }
   }, [costo, margen, setValue])
@@ -74,10 +74,18 @@ export default function ProductosPage() {
     setSubmitting(true)
     setError(null)
     try {
+      const payload = {
+        ...data,
+        costoActual: Number(data.costoActual),
+        margen: Number(data.margen),
+        precioVenta: Number(data.precioVenta),
+        iepsPorcentaje: Number(data.iepsPorcentaje ?? 0),
+      }
+
       const res = await fetch('/api/productos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -155,7 +163,7 @@ export default function ProductosPage() {
                 type="number"
                 step="0.01"
                 min="0"
-                {...register('costoActual', { required: 'Requerido', min: 0 })}
+                {...register('costoActual', { required: 'Requerido', min: 0, valueAsNumber: true })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                 placeholder="0.00"
               />
@@ -168,7 +176,7 @@ export default function ProductosPage() {
                 type="number"
                 step="0.01"
                 min="0"
-                {...register('margen', { required: 'Requerido', min: 0 })}
+                {...register('margen', { required: 'Requerido', min: 0, valueAsNumber: true })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                 placeholder="30"
               />
@@ -180,7 +188,7 @@ export default function ProductosPage() {
                 type="number"
                 step="0.01"
                 min="0"
-                {...register('precioVenta', { required: 'Requerido', min: 0 })}
+                {...register('precioVenta', { required: 'Requerido', min: 0, valueAsNumber: true })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                 placeholder="0.00"
               />
