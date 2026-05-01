@@ -214,6 +214,76 @@ describe('validación de sesión de caja abierta', () => {
   })
 })
 
+describe('GRANEL – cantidades decimales', () => {
+  it('calcula correctamente con cantidad decimal sin impuestos', () => {
+    const detalles: DetalleInput[] = [
+      {
+        cantidad: 0.5,
+        producto: { precioVenta: 20, ivaAplica: false, iepsAplica: false, iepsPorcentaje: 0 },
+      },
+    ]
+    const { subtotal, totalIva, totalIeps, total } = calcularTotalesVenta(detalles)
+    expect(subtotal).toBe(10)
+    expect(totalIva).toBe(0)
+    expect(totalIeps).toBe(0)
+    expect(total).toBe(10)
+  })
+
+  it('calcula correctamente cantidad decimal con IVA', () => {
+    const detalles: DetalleInput[] = [
+      {
+        cantidad: 0.125,
+        producto: { precioVenta: 80, ivaAplica: true, iepsAplica: false, iepsPorcentaje: 0 },
+      },
+    ]
+    const { subtotal, totalIva, total } = calcularTotalesVenta(detalles)
+    expect(subtotal).toBe(round2(80 * 0.125))   // 10
+    expect(totalIva).toBe(round2(10 * 0.16))     // 1.6
+    expect(total).toBe(round2(10 + 1.6))          // 11.6
+  })
+
+  it('calcula correctamente cantidad decimal con IVA e IEPS', () => {
+    const detalles: DetalleInput[] = [
+      {
+        cantidad: 1.5,
+        producto: { precioVenta: 100, ivaAplica: true, iepsAplica: true, iepsPorcentaje: 8 },
+      },
+    ]
+    const { subtotal, totalIva, totalIeps, total } = calcularTotalesVenta(detalles)
+    // subtotal = 100 * 1.5 = 150
+    // iepsLinea = 100 * 0.08 * 1.5 = 12
+    // baseIva = (100 - 8) * 1.5 = 138; ivaLinea = 138 * 0.16 = 22.08
+    expect(subtotal).toBe(150)
+    expect(totalIeps).toBe(12)
+    expect(totalIva).toBe(round2(138 * 0.16))
+    expect(total).toBe(round2(150 + 22.08 + 12))
+  })
+})
+
+describe('validarStockSuficiente – cantidades decimales', () => {
+  it('permite venta GRANEL cuando cantidad decimal es menor al stock', () => {
+    const inventario = new Map([['prod-granel', 2.5]])
+    const detalles = [{ productoId: 'prod-granel', cantidad: 0.75 }]
+    const resultado = validarStockSuficiente(detalles, inventario)
+    expect(resultado.ok).toBe(true)
+  })
+
+  it('permite venta GRANEL cuando la cantidad decimal iguala el stock', () => {
+    const inventario = new Map([['prod-granel', 0.5]])
+    const detalles = [{ productoId: 'prod-granel', cantidad: 0.5 }]
+    const resultado = validarStockSuficiente(detalles, inventario)
+    expect(resultado.ok).toBe(true)
+  })
+
+  it('rechaza venta GRANEL cuando cantidad decimal excede el stock', () => {
+    const inventario = new Map([['prod-granel', 1.0]])
+    const detalles = [{ productoId: 'prod-granel', cantidad: 1.001 }]
+    const resultado = validarStockSuficiente(detalles, inventario)
+    expect(resultado.ok).toBe(false)
+    expect(resultado.productoId).toBe('prod-granel')
+  })
+})
+
 describe('cálculo de cambio', () => {
   it('calcula el cambio correctamente en pago en efectivo', () => {
     const total = 116

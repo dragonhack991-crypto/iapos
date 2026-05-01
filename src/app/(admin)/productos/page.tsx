@@ -12,6 +12,8 @@ interface Producto {
   margen: string
   precioVenta: string
   ivaAplica: boolean
+  iepsAplica: boolean
+  iepsPorcentaje: number | string
   activo: boolean
 }
 
@@ -46,6 +48,7 @@ export default function ProductosPage() {
 
   const costo = watch('costoActual')
   const margen = watch('margen')
+  const iepsAplica = watch('iepsAplica')
 
   useEffect(() => {
     if (Number.isFinite(costo) && Number.isFinite(margen)) {
@@ -205,6 +208,20 @@ export default function ProductosPage() {
               </label>
             </div>
 
+            {iepsAplica && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IEPS (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  {...register('iepsPorcentaje', { valueAsNumber: true })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="Ej: 8.00"
+                />
+              </div>
+            )}
+
             <div className="md:col-span-2 flex justify-end">
               <button
                 type="submit"
@@ -231,13 +248,14 @@ export default function ProductosPage() {
                 <th className="text-right px-6 py-3 font-semibold text-gray-600">Costo</th>
                 <th className="text-right px-6 py-3 font-semibold text-gray-600">Precio</th>
                 <th className="text-center px-6 py-3 font-semibold text-gray-600">IVA</th>
+                <th className="text-center px-6 py-3 font-semibold text-gray-600">IEPS</th>
                 <th className="text-center px-6 py-3 font-semibold text-gray-600">Estado</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {productos.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-gray-400">
+                  <td colSpan={8} className="text-center py-8 text-gray-400">
                     No hay productos registrados
                   </td>
                 </tr>
@@ -255,6 +273,11 @@ export default function ProductosPage() {
                     </td>
                     <td className="px-6 py-3 text-center">
                       {p.ivaAplica ? '✅' : '—'}
+                    </td>
+                    <td className="px-6 py-3 text-center">
+                      {p.iepsAplica
+                        ? `✅ ${Number(p.iepsPorcentaje).toFixed(2)}%`
+                        : '—'}
                     </td>
                     <td className="px-6 py-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
