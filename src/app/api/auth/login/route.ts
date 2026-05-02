@@ -40,6 +40,15 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 8,
       path: '/',
     })
+    // Re-establish the initialization flag so the middleware can confirm the
+    // system is set up even after browser cookies have been cleared.
+    response.cookies.set('iapos_initialized', '1', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+    })
     return response
   } catch (e) {
     if (e instanceof z.ZodError) {
