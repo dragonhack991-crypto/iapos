@@ -89,7 +89,18 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    return NextResponse.json({ ok: true })
+    const response = NextResponse.json({ ok: true })
+    // Signal to middleware that the system has been initialized.
+    // This is a routing convenience flag – actual security is enforced by the
+    // JWT session token and the DB guard above.
+    response.cookies.set('iapos_initialized', '1', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+    })
+    return response
   } catch (e) {
     if (e instanceof z.ZodError) {
       return NextResponse.json({ error: 'Datos inválidos', detalles: e.errors }, { status: 400 })
