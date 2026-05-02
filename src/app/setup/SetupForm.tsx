@@ -22,6 +22,7 @@ export default function SetupForm() {
     register,
     handleSubmit,
     watch,
+    trigger,
     formState: { errors },
   } = useForm<SetupForm>()
 
@@ -44,6 +45,11 @@ export default function SetupForm() {
         }),
       })
       const json = await res.json()
+      if (res.status === 409) {
+        // System was initialized by another session – redirect immediately
+        router.replace('/login')
+        return
+      }
       if (!res.ok) {
         setError(json.error || 'Error en la configuración')
         return
@@ -86,7 +92,11 @@ export default function SetupForm() {
                   </label>
                   <input
                     type="text"
-                    {...register('nombreNegocio', { required: 'El nombre es requerido' })}
+                    {...register('nombreNegocio', {
+                      required: 'El nombre es requerido',
+                      validate: (val) =>
+                        val.trim().length >= 2 || 'El nombre debe tener al menos 2 caracteres',
+                    })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
                     placeholder="Mi Negocio S.A."
                   />
@@ -96,7 +106,10 @@ export default function SetupForm() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
+                  onClick={async () => {
+                    const valid = await trigger('nombreNegocio')
+                    if (valid) setStep(2)
+                  }}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-lg transition"
                 >
                   Siguiente

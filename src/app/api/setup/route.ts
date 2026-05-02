@@ -4,7 +4,10 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 
 const setupSchema = z.object({
-  nombreNegocio: z.string().min(1),
+  nombreNegocio: z
+    .string()
+    .trim()
+    .min(2, 'El nombre del negocio debe tener al menos 2 caracteres'),
   admin: z.object({
     nombre: z.string().min(1),
     email: z.string().email(),
@@ -18,7 +21,7 @@ export async function POST(request: NextRequest) {
       where: { clave: 'configurado' },
     })
     if (existente) {
-      return NextResponse.json({ error: 'El sistema ya está configurado' }, { status: 400 })
+      return NextResponse.json({ error: 'El sistema ya está configurado' }, { status: 409 })
     }
 
     const body = await request.json()
@@ -103,7 +106,10 @@ export async function POST(request: NextRequest) {
     return response
   } catch (e) {
     if (e instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Datos inválidos', detalles: e.errors }, { status: 400 })
+      return NextResponse.json(
+        { error: e.errors[0]?.message ?? 'Datos inválidos', detalles: e.errors },
+        { status: 422 }
+      )
     }
     console.error(e)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })

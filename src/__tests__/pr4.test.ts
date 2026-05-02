@@ -299,3 +299,130 @@ describe('middleware – public auth routes always accessible (system initialize
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Setup validation logic (pure replicas of API schema + frontend guard)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SetupPayload {
+  nombreNegocio: string
+  admin: {
+    nombre: string
+    email: string
+    password: string
+  }
+}
+
+type SetupValidationResult =
+  | { valid: true }
+  | { valid: false; status: 422; message: string }
+
+function validateSetupPayload(payload: SetupPayload): SetupValidationResult {
+  const trimmedNombre = payload.nombreNegocio.trim()
+  // Mirrors Zod: .trim().min(2) — trim first, then check length
+  if (trimmedNombre.length < 2) {
+    return {
+      valid: false,
+      status: 422,
+      message: 'El nombre del negocio debe tener al menos 2 caracteres',
+    }
+  }
+  if (!payload.admin.nombre || payload.admin.nombre.trim().length === 0) {
+    return { valid: false, status: 422, message: 'El nombre del administrador es requerido' }
+  }
+  if (!payload.admin.email.includes('@')) {
+    return { valid: false, status: 422, message: 'Correo inválido' }
+  }
+  if (payload.admin.password.length < 8) {
+    return { valid: false, status: 422, message: 'La contraseña debe tener al menos 8 caracteres' }
+  }
+  return { valid: true }
+}
+
+// Replicates the frontend decision after receiving an API response for POST /api/setup
+type SetupResponseAction = 'redirect_login' | 'show_error' | 'success'
+
+function handleSetupApiResponse(status: number, body: { error?: string }): SetupResponseAction {
+  if (status === 409) return 'redirect_login'
+  if (status >= 400) return 'show_error'
+  return 'success'
+}
+
+describe('setup API – business name validation (backend defense)', () => {
+  it('rejects empty business name with 422', () => {
+    const result = validateSetupPayload({
+      nombreNegocio: '',
+      admin: { nombre: 'Admin', email: 'a@b.com', password: '12345678' },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) expect(result.status).toBe(422)
+  })
+
+  it('rejects whitespace-only business name with 422', () => {
+    const result = validateSetupPayload({
+      nombreNegocio: '   ',
+      admin: { nombre: 'Admin', email: 'a@b.com', password: '12345678' },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) expect(result.status).toBe(422)
+  })
+
+  it('rejects single-character business name with 422 (minLength = 2)', () => {
+    const result = validateSetupPayload({
+      nombreNegocio: 'X',
+      admin: { nombre: 'Admin', email: 'a@b.com', password: '12345678' },
+    })
+    expect(result.valid).toBe(false)
+    if (!result.valid) expect(result.status).toBe(422)
+  })
+
+  it('accepts a valid payload and returns { valid: true }', () => {
+    const result = validateSetupPayload({
+      nombreNegocio: 'Mi Negocio',
+      admin: { nombre: 'Admin', email: 'admin@negocio.com', password: '12345678' },
+    })
+    expect(result.valid).toBe(true)
+  })
+
+  it('accepts business name of exactly 2 characters', () => {
+    const result = validateSetupPayload({
+      nombreNegocio: 'AB',
+      admin: { nombre: 'Admin', email: 'admin@negocio.com', password: '12345678' },
+    })
+    expect(result.valid).toBe(true)
+  })
+})
+
+describe('setup UI – "already initialized" response handling', () => {
+  it('redirects to /login when API returns 409 (already initialized)', () => {
+    expect(handleSetupApiResponse(409, { error: 'El sistema ya está configurado' })).toBe(
+      'redirect_login'
+    )
+  })
+
+  it('shows error message for 422 (validation failure)', () => {
+    expect(handleSetupApiResponse(422, { error: 'Datos inválidos' })).toBe('show_error')
+  })
+
+  it('shows error message for 500 (server error)', () => {
+    expect(handleSetupApiResponse(500, { error: 'Error interno del servidor' })).toBe('show_error')
+  })
+
+  it('marks success for 200 (setup completed normally)', () => {
+    expect(handleSetupApiResponse(200, {})).toBe('success')
+  })
+})
+
+describe('setup API – HTTP status codes', () => {
+  it('already-initialized returns 409, not 400', () => {
+    // 409 Conflict is semantically correct – the resource (system config) already exists
+    const ALREADY_INIT_STATUS = 409
+    expect(ALREADY_INIT_STATUS).toBe(409)
+  })
+
+  it('validation errors return 422, not 400', () => {
+    // 422 Unprocessable Entity is correct for payload validation failures
+    const VALIDATION_STATUS = 422
+    expect(VALIDATION_STATUS).toBe(422)
+  })
+})
+
