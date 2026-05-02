@@ -20,6 +20,7 @@ model Usuario {
   sesionesApertura SesionCaja[] @relation("UsuarioApertura")
   movimientos  MovimientoInventario[]
   ventas       Venta[]
+  ventasCanceladas Venta[]    @relation("UsuarioCancelacion")
 
   @@map("usuarios")
 }
@@ -111,6 +112,13 @@ model SesionCaja {
   diferencia     Decimal?  @db.Decimal(10, 2)
   observaciones  String?
   estado         EstadoSesion @default(ABIERTA)
+  // Corte Z summary totals (populated on close)
+  totalVentas        Decimal? @db.Decimal(10, 2)
+  totalEfectivo      Decimal? @db.Decimal(10, 2)
+  totalTarjeta       Decimal? @db.Decimal(10, 2)
+  totalTransferencia Decimal? @db.Decimal(10, 2)
+  totalIva           Decimal? @db.Decimal(10, 2)
+  totalIeps          Decimal? @db.Decimal(10, 2)
   caja           Caja      @relation(fields: [cajaId], references: [id])
   usuarioApertura Usuario  @relation("UsuarioApertura", fields: [usuarioAperturaId], references: [id])
   ventas         Venta[]
@@ -206,9 +214,14 @@ model Venta {
   pagoCon        Decimal?     @db.Decimal(10, 2)
   cambio         Decimal?     @db.Decimal(10, 2)
   estado         EstadoVenta  @default(COMPLETADA)
+  // Cancellation metadata
+  canceladoEn    DateTime?
+  canceladoPorId String?
+  motivoCancelacion String?
   creadoEn       DateTime     @default(now())
   sesionCaja     SesionCaja   @relation(fields: [sesionCajaId], references: [id])
   usuario        Usuario      @relation(fields: [usuarioId], references: [id])
+  canceladoPor   Usuario?     @relation("UsuarioCancelacion", fields: [canceladoPorId], references: [id])
   detalles       VentaDetalle[]
   movimientos    MovimientoInventario[]
 

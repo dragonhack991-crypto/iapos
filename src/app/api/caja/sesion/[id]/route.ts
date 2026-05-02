@@ -4,9 +4,13 @@ import { prisma } from '@/lib/prisma'
 import { obtenerSesion } from '@/lib/auth'
 
 const cerrarCajaSchema = z.object({
-  montoContado: z.number().min(0),
+  montoContado: z.number().min(0).optional(),
   observaciones: z.string().optional(),
 })
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -30,20 +34,79 @@ export async function PATCH(
       return NextResponse.json({ error: 'Sesión no encontrada o ya cerrada' }, { status: 404 })
     }
 
-    const diferencia = montoContado - parseFloat(sesionCaja.montoInicial.toString())
+    // Compute corte Z summary totals from active (COMPLETADA) ventas in this session
+    const ventas = await prisma.venta.findMany({
+      where: { sesionCajaId: params.id, estado: 'COMPLETADA' },
+      select: {
+        total: true,
+        totalIva: true,
+        totalIeps: true,
+        metodoPago: true,
+      },
+    })
+
+    let totalVentas = 0
+    let totalEfectivo = 0
+    let totalTarjeta = 0
+    let totalTransferencia = 0
+    let totalIva = 0
+    let totalIeps = 0
+
+    for (const v of ventas) {
+      const t = parseFloat(v.total.toString())
+      totalVentas += t
+      totalIva += parseFloat(v.totalIva.toString())
+      totalIeps += parseFloat(v.totalIeps.toString())
+      if (v.metodoPago === 'EFECTIVO') totalEfectivo += t
+      else if (v.metodoPago === 'TARJETA') totalTarjeta += t
+      else if (v.metodoPago === 'TRANSFERENCIA') totalTransferencia += t
+    }
+
+    totalVentas = round2(totalVentas)
+    totalEfectivo = round2(totalEfectivo)
+    totalTarjeta = round2(totalTarjeta)
+    totalTransferencia = round2(totalTransferencia)
+    totalIva = round2(totalIva)
+    totalIeps = round2(totalIeps)
+
+    const montoInicialNum = parseFloat(sesionCaja.montoInicial.toString())
+    // Expected cash = initial amount + cash sales
+    const efectivoEsperado = round2(montoInicialNum + totalEfectivo)
+    const diferencia =
+      montoContado !== undefined ? round2(montoContado - efectivoEsperado) : null
 
     const sesionActualizada = await prisma.sesionCaja.update({
       where: { id: params.id },
       data: {
         estado: 'CERRADA',
         fechaCierre: new Date(),
-        montoContado,
+        montoContado: montoContado ?? null,
         diferencia,
         observaciones,
+        totalVentas,
+        totalEfectivo,
+        totalTarjeta,
+        totalTransferencia,
+        totalIva,
+        totalIeps,
       },
     })
 
-    return NextResponse.json({ sesion: sesionActualizada })
+    return NextResponse.json({
+      sesion: sesionActualizada,
+      resumen: {
+        totalVentas,
+        totalEfectivo,
+        totalTarjeta,
+        totalTransferencia,
+        totalIva,
+        totalIeps,
+        efectivoEsperado,
+        montoContado: montoContado ?? null,
+        diferencia,
+        numVentas: ventas.length,
+      },
+    })
   } catch (e) {
     if (e instanceof z.ZodError) {
       return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 })

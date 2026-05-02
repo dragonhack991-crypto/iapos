@@ -11,6 +11,19 @@ interface SesionCaja {
   caja: { nombre: string; sucursal: { nombre: string } }
 }
 
+interface ResumenCorteZ {
+  totalVentas: number
+  totalEfectivo: number
+  totalTarjeta: number
+  totalTransferencia: number
+  totalIva: number
+  totalIeps: number
+  efectivoEsperado: number
+  montoContado: number | null
+  diferencia: number | null
+  numVentas: number
+}
+
 export default function CajaPage() {
   const [sesion, setSesion] = useState<SesionCaja | null>(null)
   const [loading, setLoading] = useState(true)
@@ -19,6 +32,7 @@ export default function CajaPage() {
   const [observaciones, setObservaciones] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [corteZ, setCorteZ] = useState<ResumenCorteZ | null>(null)
 
   const cargarSesion = useCallback(async () => {
     try {
@@ -55,6 +69,7 @@ export default function CajaPage() {
         return
       }
       setSesion(data.sesion)
+      setCorteZ(null)
       setMontoInicial('')
     } finally {
       setSubmitting(false)
@@ -62,21 +77,18 @@ export default function CajaPage() {
   }
 
   async function cerrarCaja() {
-    if (!montoContado || isNaN(parseFloat(montoContado))) {
-      setError('Ingresa el monto contado')
-      return
-    }
     if (!sesion) return
     setSubmitting(true)
     setError(null)
     try {
+      const body: Record<string, unknown> = { observaciones }
+      if (montoContado && !isNaN(parseFloat(montoContado))) {
+        body.montoContado = parseFloat(montoContado)
+      }
       const res = await fetch(`/api/caja/sesion/${sesion.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          montoContado: parseFloat(montoContado),
-          observaciones,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -86,6 +98,7 @@ export default function CajaPage() {
       setSesion(null)
       setMontoContado('')
       setObservaciones('')
+      if (data.resumen) setCorteZ(data.resumen)
     } finally {
       setSubmitting(false)
     }
@@ -107,6 +120,69 @@ export default function CajaPage() {
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
           {error}
+        </div>
+      )}
+
+      {/* Corte Z summary after close */}
+      {!sesion && corteZ && (
+        <div className="mb-8 bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <h2 className="text-lg font-bold text-blue-800 mb-4">🧾 Corte Z — Resumen de sesión</h2>
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            <div className="col-span-2 flex justify-between font-semibold text-gray-800 border-b border-blue-200 pb-2">
+              <dt>Ventas completadas</dt>
+              <dd>{corteZ.numVentas}</dd>
+            </div>
+            <div className="flex justify-between col-span-2">
+              <dt className="text-gray-600">Total ventas</dt>
+              <dd className="font-semibold">${corteZ.totalVentas.toFixed(2)}</dd>
+            </div>
+            {corteZ.totalEfectivo > 0 && (
+              <div className="flex justify-between col-span-2">
+                <dt className="text-gray-600">Efectivo</dt>
+                <dd>${corteZ.totalEfectivo.toFixed(2)}</dd>
+              </div>
+            )}
+            {corteZ.totalTarjeta > 0 && (
+              <div className="flex justify-between col-span-2">
+                <dt className="text-gray-600">Tarjeta</dt>
+                <dd>${corteZ.totalTarjeta.toFixed(2)}</dd>
+              </div>
+            )}
+            {corteZ.totalTransferencia > 0 && (
+              <div className="flex justify-between col-span-2">
+                <dt className="text-gray-600">Transferencia</dt>
+                <dd>${corteZ.totalTransferencia.toFixed(2)}</dd>
+              </div>
+            )}
+            {corteZ.totalIva > 0 && (
+              <div className="flex justify-between col-span-2">
+                <dt className="text-gray-600">IVA total</dt>
+                <dd>${corteZ.totalIva.toFixed(2)}</dd>
+              </div>
+            )}
+            {corteZ.totalIeps > 0 && (
+              <div className="flex justify-between col-span-2">
+                <dt className="text-gray-600">IEPS total</dt>
+                <dd>${corteZ.totalIeps.toFixed(2)}</dd>
+              </div>
+            )}
+            <div className="flex justify-between col-span-2 border-t border-blue-200 pt-2">
+              <dt className="text-gray-600">Efectivo esperado</dt>
+              <dd>${corteZ.efectivoEsperado.toFixed(2)}</dd>
+            </div>
+            {corteZ.montoContado !== null && (
+              <div className="flex justify-between col-span-2">
+                <dt className="text-gray-600">Contado</dt>
+                <dd>${corteZ.montoContado.toFixed(2)}</dd>
+              </div>
+            )}
+            {corteZ.diferencia !== null && (
+              <div className={`flex justify-between col-span-2 font-semibold ${corteZ.diferencia >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                <dt>Diferencia</dt>
+                <dd>{corteZ.diferencia >= 0 ? '+' : ''}{corteZ.diferencia.toFixed(2)}</dd>
+              </div>
+            )}
+          </dl>
         </div>
       )}
 
@@ -165,7 +241,7 @@ export default function CajaPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Monto contado (MXN)
+                  Efectivo contado (MXN) <span className="text-gray-400 font-normal">— opcional</span>
                 </label>
                 <input
                   type="number"
