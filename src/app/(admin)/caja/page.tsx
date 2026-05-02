@@ -285,7 +285,13 @@ export default function CajaPage() {
                         <span>Efectivo contado</span>
                         <span className="font-medium">${montoContadoNum.toFixed(2)}</span>
                       </div>
-                      <div className={`flex justify-between font-bold border-t border-gray-200 pt-2 ${diferenciaVivo === null ? '' : diferenciaVivo >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      <div className={`flex justify-between font-bold border-t border-gray-200 pt-2 ${
+                          diferenciaVivo === null
+                            ? ''
+                            : diferenciaVivo >= 0
+                            ? 'text-green-700'
+                            : 'text-red-700'
+                        }`}>
                         <span>Diferencia</span>
                         <span>
                           {diferenciaVivo !== null

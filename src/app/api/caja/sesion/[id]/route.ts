@@ -40,7 +40,7 @@ export async function GET(
   }
 
   const montoInicialNum = parseFloat(sesionCaja.montoInicial.toString())
-  const efectivoEsperado = round2(montoInicialNum + round2(totalEfectivo))
+  const efectivoEsperado = round2(montoInicialNum + totalEfectivo)
 
   return NextResponse.json({ efectivoEsperado, totalVentas: round2(totalVentas), numVentas: ventas.length })
 }
