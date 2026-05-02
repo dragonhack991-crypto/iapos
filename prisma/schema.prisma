@@ -213,6 +213,11 @@ model Venta {
   total          Decimal      @db.Decimal(10, 2)
   pagoCon        Decimal?     @db.Decimal(10, 2)
   cambio         Decimal?     @db.Decimal(10, 2)
+  // Payment metadata — populated based on metodoPago
+  banco          String?      // TRANSFERENCIA: bank name
+  referencia     String?      // TRANSFERENCIA: reference / clave de rastreo
+  ultimos4       String?      // TARJETA: last 4 digits
+  numeroOperacion String?     // TARJETA: operation/authorization number
   estado         EstadoVenta  @default(COMPLETADA)
   // Cancellation metadata
   canceladoEn    DateTime?

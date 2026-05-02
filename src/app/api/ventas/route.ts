@@ -9,12 +9,31 @@ const ventaDetalleSchema = z.object({
   cantidad: z.number().positive(),
 })
 
-const ventaSchema = z.object({
+const baseVentaFields = {
   sesionCajaId: z.string().min(1),
-  metodoPago: z.enum(['EFECTIVO', 'TARJETA', 'TRANSFERENCIA']).default('EFECTIVO'),
   detalles: z.array(ventaDetalleSchema).min(1, 'La venta debe tener al menos un producto'),
-  pagoCon: z.number().positive().optional(),
-})
+}
+
+const ventaSchema = z.discriminatedUnion('metodoPago', [
+  z.object({
+    ...baseVentaFields,
+    metodoPago: z.literal('EFECTIVO'),
+    pagoCon: z.number({ required_error: 'El monto recibido es obligatorio para pago en efectivo' })
+      .positive('El monto recibido debe ser mayor a cero'),
+  }),
+  z.object({
+    ...baseVentaFields,
+    metodoPago: z.literal('TARJETA'),
+    ultimos4: z.string().regex(/^\d{4}$/, 'Ingresa exactamente los últimos 4 dígitos de la tarjeta'),
+    numeroOperacion: z.string().min(1, 'El número de operación es obligatorio'),
+  }),
+  z.object({
+    ...baseVentaFields,
+    metodoPago: z.literal('TRANSFERENCIA'),
+    banco: z.string().min(1, 'El banco es obligatorio'),
+    referencia: z.string().min(1, 'La referencia o clave de rastreo es obligatoria'),
+  }),
+])
 
 export async function GET(request: NextRequest) {
   const sesion = await obtenerSesion()
@@ -201,7 +220,7 @@ export async function POST(request: NextRequest) {
 
   const totalFinal = round2(subtotalTotal + totalIvaCalc + totalIepsCalc)
 
-  if (data.metodoPago === 'EFECTIVO' && data.pagoCon !== undefined && data.pagoCon < totalFinal) {
+  if (data.metodoPago === 'EFECTIVO' && data.pagoCon < totalFinal) {
     return NextResponse.json(
       { error: `Pago insuficiente. Total: $${totalFinal}, Pago con: $${data.pagoCon}` },
       { status: 422 }
@@ -209,7 +228,7 @@ export async function POST(request: NextRequest) {
   }
 
   const cambio =
-    data.metodoPago === 'EFECTIVO' && data.pagoCon !== undefined
+    data.metodoPago === 'EFECTIVO'
       ? round2(data.pagoCon - totalFinal)
       : null
 
@@ -238,8 +257,12 @@ export async function POST(request: NextRequest) {
           totalIva: round2(totalIvaCalc),
           totalIeps: round2(totalIepsCalc),
           total: totalFinal,
-          pagoCon: data.pagoCon ?? null,
+          pagoCon: data.metodoPago === 'EFECTIVO' ? data.pagoCon : null,
           cambio,
+          banco: data.metodoPago === 'TRANSFERENCIA' ? data.banco : null,
+          referencia: data.metodoPago === 'TRANSFERENCIA' ? data.referencia : null,
+          ultimos4: data.metodoPago === 'TARJETA' ? data.ultimos4 : null,
+          numeroOperacion: data.metodoPago === 'TARJETA' ? data.numeroOperacion : null,
           detalles: {
             create: detallesCalculados,
           },

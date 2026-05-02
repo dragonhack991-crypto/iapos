@@ -12,6 +12,39 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+export async function GET(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const sesion = await obtenerSesion()
+  if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  const params = await context.params
+
+  const sesionCaja = await prisma.sesionCaja.findUnique({ where: { id: params.id } })
+  if (!sesionCaja || sesionCaja.estado !== 'ABIERTA') {
+    return NextResponse.json({ error: 'Sesión no encontrada o ya cerrada' }, { status: 404 })
+  }
+
+  const ventas = await prisma.venta.findMany({
+    where: { sesionCajaId: params.id, estado: 'COMPLETADA' },
+    select: { total: true, metodoPago: true },
+  })
+
+  let totalEfectivo = 0
+  let totalVentas = 0
+  for (const v of ventas) {
+    const t = parseFloat(v.total.toString())
+    totalVentas += t
+    if (v.metodoPago === 'EFECTIVO') totalEfectivo += t
+  }
+
+  const montoInicialNum = parseFloat(sesionCaja.montoInicial.toString())
+  const efectivoEsperado = round2(montoInicialNum + round2(totalEfectivo))
+
+  return NextResponse.json({ efectivoEsperado, totalVentas: round2(totalVentas), numVentas: ventas.length })
+}
+
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }

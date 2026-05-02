@@ -25,6 +25,10 @@ interface Venta {
   total: string
   pagoCon: string | null
   cambio: string | null
+  banco: string | null
+  referencia: string | null
+  ultimos4: string | null
+  numeroOperacion: string | null
   estado: 'COMPLETADA' | 'CANCELADA'
   canceladoEn: string | null
   motivoCancelacion: string | null
@@ -281,13 +285,21 @@ export default function VentasHistorialPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{venta.usuario?.nombre ?? '—'}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2">
                         <button
                           onClick={() => setVentaDetalle(venta)}
                           className="px-3 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition"
                         >
                           Ver
                         </button>
+                        <a
+                          href={`/ventas/ticket/${venta.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1 text-xs bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition"
+                        >
+                          🖨️ Ticket
+                        </a>
                         {venta.estado === 'COMPLETADA' && (
                           <button
                             onClick={() => { setCancelModal(venta); setCancelError(null); setMotivoCancelacion('') }}
@@ -354,12 +366,22 @@ export default function VentasHistorialPage() {
                   {ventaDetalle.usuario && ` · ${ventaDetalle.usuario.nombre}`}
                 </p>
               </div>
-              <button
-                onClick={() => setVentaDetalle(null)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`/ventas/ticket/${ventaDetalle.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                >
+                  🖨️ Ticket
+                </a>
+                <button
+                  onClick={() => setVentaDetalle(null)}
+                  className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="p-6">
@@ -453,6 +475,38 @@ export default function VentasHistorialPage() {
                       <span>Cambio</span>
                       <span>${toNum(ventaDetalle.cambio).toFixed(2)}</span>
                     </div>
+                  </>
+                )}
+                {ventaDetalle.metodoPago === 'TARJETA' && (
+                  <>
+                    {ventaDetalle.ultimos4 && (
+                      <div className="flex justify-between text-gray-500 text-xs">
+                        <span>Tarjeta</span>
+                        <span>**** {ventaDetalle.ultimos4}</span>
+                      </div>
+                    )}
+                    {ventaDetalle.numeroOperacion && (
+                      <div className="flex justify-between text-gray-500 text-xs">
+                        <span>Núm. operación</span>
+                        <span>{ventaDetalle.numeroOperacion}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {ventaDetalle.metodoPago === 'TRANSFERENCIA' && (
+                  <>
+                    {ventaDetalle.banco && (
+                      <div className="flex justify-between text-gray-500 text-xs">
+                        <span>Banco</span>
+                        <span>{ventaDetalle.banco}</span>
+                      </div>
+                    )}
+                    {ventaDetalle.referencia && (
+                      <div className="flex justify-between text-gray-500 text-xs">
+                        <span>Referencia</span>
+                        <span>{ventaDetalle.referencia}</span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
