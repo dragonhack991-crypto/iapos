@@ -87,9 +87,15 @@ export default function VentasPage() {
   const [busqueda, setBusqueda] = useState('')
   const [metodoPago, setMetodoPago] = useState<'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'>('EFECTIVO')
   const [pagoCon, setPagoCon] = useState('')
+  // Tarjeta fields
+  const [ultimos4, setUltimos4] = useState('')
+  const [numeroOperacion, setNumeroOperacion] = useState('')
+  // Transferencia fields
+  const [banco, setBanco] = useState('')
+  const [referencia, setReferencia] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [ventaExitosa, setVentaExitosa] = useState<{ folio: number; cambio: number | null } | null>(null)
+  const [ventaExitosa, setVentaExitosa] = useState<{ id: string; folio: number; cambio: number | null } | null>(null)
   const [granelModal, setGranelModal] = useState<GranelModal | null>(null)
 
   const cargarDatos = useCallback(async () => {
@@ -205,6 +211,10 @@ export default function VentasPage() {
   function limpiarCarrito() {
     setCarrito([])
     setPagoCon('')
+    setUltimos4('')
+    setNumeroOperacion('')
+    setBanco('')
+    setReferencia('')
     setError(null)
     setVentaExitosa(null)
   }
@@ -220,27 +230,65 @@ export default function VentasPage() {
       setError('El carrito está vacío.')
       return
     }
-    if (metodoPago === 'EFECTIVO' && pagoCon && toNumber(pagoCon, 0) < totales.total) {
-      setError(`El pago (${pagoCon}) es menor al total ($${totales.total.toFixed(2)})`)
-      return
+
+    // Client-side validation per payment method
+    if (metodoPago === 'EFECTIVO') {
+      const montoNum = toNumber(pagoCon, 0)
+      if (!pagoCon || montoNum <= 0) {
+        setError('Ingresa el monto recibido del cliente.')
+        return
+      }
+      if (montoNum < totales.total) {
+        setError(`El pago ($${montoNum.toFixed(2)}) es menor al total ($${totales.total.toFixed(2)})`)
+        return
+      }
+    } else if (metodoPago === 'TARJETA') {
+      if (!/^\d{4}$/.test(ultimos4)) {
+        setError('Ingresa exactamente los últimos 4 dígitos de la tarjeta.')
+        return
+      }
+      if (!numeroOperacion.trim()) {
+        setError('Ingresa el número de operación del voucher.')
+        return
+      }
+    } else if (metodoPago === 'TRANSFERENCIA') {
+      if (!banco.trim()) {
+        setError('Ingresa el banco de la transferencia.')
+        return
+      }
+      if (!referencia.trim()) {
+        setError('Ingresa la referencia o clave de rastreo.')
+        return
+      }
     }
 
     setSubmitting(true)
     setError(null)
 
     try {
+      const payload: Record<string, unknown> = {
+        sesionCajaId: sesionCaja.id,
+        metodoPago,
+        detalles: carrito.map((i) => ({
+          productoId: i.producto.id,
+          cantidad: i.cantidad,
+        })),
+      }
+
+      if (metodoPago === 'EFECTIVO') {
+        payload.pagoCon = toNumber(pagoCon, 0)
+      } else if (metodoPago === 'TARJETA') {
+        payload.ultimos4 = ultimos4
+        payload.numeroOperacion = numeroOperacion.trim()
+      } else if (metodoPago === 'TRANSFERENCIA') {
+        payload.banco = banco.trim()
+        payload.referencia = referencia.trim()
+      }
+
       const res = await fetch('/api/ventas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sesionCajaId: sesionCaja.id,
-          metodoPago,
-          detalles: carrito.map((i) => ({
-            productoId: i.producto.id,
-            cantidad: i.cantidad,
-          })),
-          pagoCon: metodoPago === 'EFECTIVO' && pagoCon ? toNumber(pagoCon, 0) : undefined,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
@@ -251,7 +299,7 @@ export default function VentasPage() {
 
       const cambio = data.venta.cambio ? toNumber(data.venta.cambio, 0) : null
       limpiarCarrito()
-      setVentaExitosa({ folio: data.venta.folio, cambio })
+      setVentaExitosa({ id: data.venta.id, folio: data.venta.folio, cambio })
       const resP = await fetch('/api/productos')
       if (resP.ok) {
         const dp = await resP.json()
@@ -306,6 +354,15 @@ export default function VentasPage() {
             {ventaExitosa.cambio !== null && (
               <> Cambio: <strong>${ventaExitosa.cambio.toFixed(2)}</strong></>
             )}
+            {' '}
+            <a
+              href={`/ventas/ticket/${ventaExitosa.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-medium ml-1"
+            >
+              🖨️ Ver ticket
+            </a>
           </div>
         )}
 
@@ -449,7 +506,15 @@ export default function VentasPage() {
               <label className="block text-xs font-medium text-gray-600 mb-1">Método de pago</label>
               <select
                 value={metodoPago}
-                onChange={(e) => setMetodoPago(e.target.value as typeof metodoPago)}
+                onChange={(e) => {
+                  setMetodoPago(e.target.value as typeof metodoPago)
+                  setPagoCon('')
+                  setUltimos4('')
+                  setNumeroOperacion('')
+                  setBanco('')
+                  setReferencia('')
+                  setError(null)
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="EFECTIVO">Efectivo</option>
@@ -460,7 +525,9 @@ export default function VentasPage() {
 
             {metodoPago === 'EFECTIVO' && (
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Pago con (MXN)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Monto recibido (MXN) <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="number"
                   min={totales.total}
@@ -471,10 +538,76 @@ export default function VentasPage() {
                   placeholder={totales.total.toFixed(2)}
                 />
                 {pagoCon && toNumber(pagoCon, 0) >= totales.total && (
-                  <p className="text-xs text-green-600 mt-1">
+                  <p className="text-xs text-green-600 mt-1 font-medium">
                     Cambio: ${(toNumber(pagoCon, 0) - totales.total).toFixed(2)}
                   </p>
                 )}
+                {pagoCon && toNumber(pagoCon, 0) > 0 && toNumber(pagoCon, 0) < totales.total && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Falta: ${(totales.total - toNumber(pagoCon, 0)).toFixed(2)}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {metodoPago === 'TARJETA' && (
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Últimos 4 dígitos <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    pattern="\d{4}"
+                    inputMode="numeric"
+                    value={ultimos4}
+                    onChange={(e) => setUltimos4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-mono tracking-widest"
+                    placeholder="1234"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Núm. operación (voucher) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={numeroOperacion}
+                    onChange={(e) => setNumeroOperacion(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Ej: 123456"
+                  />
+                </div>
+              </div>
+            )}
+
+            {metodoPago === 'TRANSFERENCIA' && (
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Banco <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={banco}
+                    onChange={(e) => setBanco(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Ej: BBVA, HSBC..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Ref. / Clave de rastreo <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={referencia}
+                    onChange={(e) => setReferencia(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Ej: CLABE o referencia"
+                  />
+                </div>
               </div>
             )}
 

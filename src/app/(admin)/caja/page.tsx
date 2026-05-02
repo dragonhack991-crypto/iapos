@@ -33,6 +33,7 @@ export default function CajaPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [corteZ, setCorteZ] = useState<ResumenCorteZ | null>(null)
+  const [efectivoEsperado, setEfectivoEsperado] = useState<number | null>(null)
 
   const cargarSesion = useCallback(async () => {
     try {
@@ -40,6 +41,14 @@ export default function CajaPage() {
       if (res.ok) {
         const data = await res.json()
         setSesion(data.sesion)
+        // Load efectivoEsperado preview if session is open
+        if (data.sesion) {
+          const preview = await fetch(`/api/caja/sesion/${data.sesion.id}`)
+          if (preview.ok) {
+            const pd = await preview.json()
+            setEfectivoEsperado(pd.efectivoEsperado ?? null)
+          }
+        }
       }
     } finally {
       setLoading(false)
@@ -71,6 +80,7 @@ export default function CajaPage() {
       setSesion(data.sesion)
       setCorteZ(null)
       setMontoInicial('')
+      setEfectivoEsperado(parseFloat(montoInicial))
     } finally {
       setSubmitting(false)
     }
@@ -98,11 +108,19 @@ export default function CajaPage() {
       setSesion(null)
       setMontoContado('')
       setObservaciones('')
+      setEfectivoEsperado(null)
       if (data.resumen) setCorteZ(data.resumen)
     } finally {
       setSubmitting(false)
     }
   }
+
+  // Compute live diferencia for corte Z UI
+  const montoContadoNum = montoContado && !isNaN(parseFloat(montoContado)) ? parseFloat(montoContado) : null
+  const diferenciaVivo =
+    efectivoEsperado !== null && montoContadoNum !== null
+      ? Math.round((montoContadoNum - efectivoEsperado) * 100) / 100
+      : null
 
   if (loading) {
     return (
@@ -253,6 +271,39 @@ export default function CajaPage() {
                   placeholder="0.00"
                 />
               </div>
+
+              {/* Live corte Z difference panel */}
+              {efectivoEsperado !== null && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm space-y-2">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Efectivo esperado</span>
+                    <span className="font-medium">${efectivoEsperado.toFixed(2)}</span>
+                  </div>
+                  {montoContadoNum !== null && (
+                    <>
+                      <div className="flex justify-between text-gray-600">
+                        <span>Efectivo contado</span>
+                        <span className="font-medium">${montoContadoNum.toFixed(2)}</span>
+                      </div>
+                      <div className={`flex justify-between font-bold border-t border-gray-200 pt-2 ${
+                          diferenciaVivo === null
+                            ? ''
+                            : diferenciaVivo >= 0
+                            ? 'text-green-700'
+                            : 'text-red-700'
+                        }`}>
+                        <span>Diferencia</span>
+                        <span>
+                          {diferenciaVivo !== null
+                            ? `${diferenciaVivo >= 0 ? '+' : ''}$${diferenciaVivo.toFixed(2)} (${diferenciaVivo >= 0 ? 'sobrante' : 'faltante'})`
+                            : '—'}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Observaciones (opcional)

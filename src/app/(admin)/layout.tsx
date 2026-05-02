@@ -24,6 +24,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <NavLink href="/caja" icon="💰">Caja</NavLink>
           <NavLink href="/productos" icon="📦">Productos</NavLink>
           <NavLink href="/inventario" icon="🗂️">Inventario</NavLink>
+          <NavLink href="/reportes" icon="📈">Reportes</NavLink>
           {sesion.permisos.includes('administrar_usuarios') && (
             <NavLink href="/usuarios" icon="👥">Usuarios</NavLink>
           )}
