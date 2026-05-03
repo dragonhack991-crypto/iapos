@@ -15,8 +15,9 @@ export default async function SetupPage() {
     if (config) {
       redirect('/login')
     }
-  } catch {
+  } catch (err) {
     // DB unreachable – let the form render; the API endpoint will guard.
+    console.error('[setup] DB initialization check failed:', err)
   }
 
   return <SetupForm />

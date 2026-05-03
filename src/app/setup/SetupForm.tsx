@@ -107,8 +107,12 @@ export default function SetupForm() {
                 <button
                   type="button"
                   onClick={async () => {
-                    const valid = await trigger('nombreNegocio')
-                    if (valid) setStep(2)
+                    try {
+                      const valid = await trigger('nombreNegocio')
+                      if (valid) setStep(2)
+                    } catch {
+                      // trigger() rejection is non-fatal; form remains on step 1
+                    }
                   }}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-lg transition"
                 >

@@ -426,3 +426,124 @@ describe('setup API – HTTP status codes', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DB-backed initialization resolution
+//
+// Replicates the logic added to the middleware so that `isInitialized` is
+// determined by the DB when the `iapos_initialized` cookie is absent.
+// This eliminates the /login ↔ /setup redirect deadlock that occurred when
+// cookies were cleared on an already-configured system.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ResolveResult {
+  initialized: boolean
+  /** true when DB confirmed initialized but cookie was absent → cookie should be restored */
+  restoreCookie: boolean
+}
+
+function resolveInitialized(
+  cookiePresent: boolean,
+  dbInitialized: boolean | null // null = DB probe failed / unreachable
+): ResolveResult {
+  if (cookiePresent) {
+    return { initialized: true, restoreCookie: false }
+  }
+  if (dbInitialized === null) {
+    // Probe failed – treat as not initialized so /setup is accessible
+    return { initialized: false, restoreCookie: false }
+  }
+  return { initialized: dbInitialized, restoreCookie: dbInitialized }
+}
+
+// Replicates GET /api/system/status logic
+function systemStatusLogic(
+  dbHasConfig: boolean | 'error'
+): { initialized: boolean; httpStatus: number } {
+  if (dbHasConfig === 'error') return { initialized: false, httpStatus: 503 }
+  return { initialized: dbHasConfig, httpStatus: 200 }
+}
+
+describe('middleware – DB fallback when iapos_initialized cookie is absent', () => {
+  it('cookie present → initialized=true, no cookie restore needed', () => {
+    const { initialized, restoreCookie } = resolveInitialized(true, false)
+    expect(initialized).toBe(true)
+    expect(restoreCookie).toBe(false)
+  })
+
+  it('cookie absent + DB initialized → initialized=true, cookie should be restored', () => {
+    const { initialized, restoreCookie } = resolveInitialized(false, true)
+    expect(initialized).toBe(true)
+    expect(restoreCookie).toBe(true)
+  })
+
+  it('cookie absent + DB not initialized → initialized=false', () => {
+    const { initialized, restoreCookie } = resolveInitialized(false, false)
+    expect(initialized).toBe(false)
+    expect(restoreCookie).toBe(false)
+  })
+
+  it('cookie absent + DB probe failed → initialized=false (safe fallback)', () => {
+    const { initialized, restoreCookie } = resolveInitialized(false, null)
+    expect(initialized).toBe(false)
+    expect(restoreCookie).toBe(false)
+  })
+
+  // ── The deadlock scenario: cookie cleared on an initialized system ────────
+  it('DB initialized + cookie absent: /login is accessible (no redirect loop)', () => {
+    const { initialized } = resolveInitialized(false, true)
+    // With initialized=true the middleware decision allows /login through
+    expect(middlewareDecision('/login', initialized, false)).toBe('pass')
+  })
+
+  it('DB initialized + cookie absent: /setup is blocked, redirects to /login', () => {
+    const { initialized } = resolveInitialized(false, true)
+    expect(middlewareDecision('/setup', initialized, false)).toBe('redirect_login')
+  })
+
+  it('DB initialized + cookie absent: /dashboard redirects to /login (no JWT)', () => {
+    const { initialized } = resolveInitialized(false, true)
+    expect(middlewareDecision('/dashboard', initialized, false)).toBe('redirect_login')
+  })
+
+  it('DB initialized + cookie absent: /dashboard accessible with valid JWT', () => {
+    const { initialized } = resolveInitialized(false, true)
+    expect(middlewareDecision('/dashboard', initialized, true)).toBe('protected')
+  })
+
+  // ── Genuinely uninitialized system ────────────────────────────────────────
+  it('DB not initialized + cookie absent: /login redirects to /setup', () => {
+    const { initialized } = resolveInitialized(false, false)
+    expect(middlewareDecision('/login', initialized, false)).toBe('redirect_setup')
+  })
+
+  it('DB not initialized + cookie absent: /dashboard redirects to /setup', () => {
+    const { initialized } = resolveInitialized(false, false)
+    expect(middlewareDecision('/dashboard', initialized, false)).toBe('redirect_setup')
+  })
+
+  it('DB not initialized + cookie absent: /setup is accessible', () => {
+    const { initialized } = resolveInitialized(false, false)
+    expect(middlewareDecision('/setup', initialized, false)).toBe('pass')
+  })
+})
+
+describe('GET /api/system/status – initialization probe logic', () => {
+  it('DB has configurado record → returns initialized=true with 200', () => {
+    const result = systemStatusLogic(true)
+    expect(result.initialized).toBe(true)
+    expect(result.httpStatus).toBe(200)
+  })
+
+  it('DB has no configurado record → returns initialized=false with 200', () => {
+    const result = systemStatusLogic(false)
+    expect(result.initialized).toBe(false)
+    expect(result.httpStatus).toBe(200)
+  })
+
+  it('DB unreachable → returns initialized=false with 503', () => {
+    const result = systemStatusLogic('error')
+    expect(result.initialized).toBe(false)
+    expect(result.httpStatus).toBe(503)
+  })
+})
+

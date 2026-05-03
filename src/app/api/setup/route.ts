@@ -107,7 +107,10 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     if (e instanceof z.ZodError) {
       return NextResponse.json(
-        { error: e.errors[0]?.message ?? 'Datos inválidos', detalles: e.errors },
+        {
+          error: e.errors[0]?.message ?? 'Datos inválidos',
+          detalles: process.env.NODE_ENV === 'development' ? e.errors : undefined,
+        },
         { status: 422 }
       )
     }
