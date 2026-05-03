@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verificarToken, COOKIE_NAME } from './lib/auth'
+import { isCookieSecure } from './lib/cookies'
 
 const INITIALIZED_COOKIE = 'iapos_initialized'
 
@@ -23,7 +24,7 @@ const RUTAS_ESTATICAS = ['/_next', '/favicon']
 function attachInitCookie(response: NextResponse): void {
   response.cookies.set(INITIALIZED_COOKIE, '1', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isCookieSecure(),
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 365, // 1 year
@@ -50,6 +51,10 @@ export async function middleware(request: NextRequest) {
   // back to an internal DB query so the middleware never incorrectly treats
   // an already-configured system as uninitialised.
   //
+  // We always fetch via 127.0.0.1:PORT so the request resolves locally within
+  // the container, regardless of the external hostname or LAN IP the client
+  // used to reach the server.
+  //
   // Actual security is enforced by JWT token validation below; the /api/setup
   // endpoint independently guards against re-initialisation via DB check.
   const cookiePresent = !!request.cookies.get(INITIALIZED_COOKIE)?.value
@@ -58,7 +63,8 @@ export async function middleware(request: NextRequest) {
 
   if (!cookiePresent) {
     try {
-      const statusUrl = new URL(RUTA_STATUS, request.url)
+      const port = process.env.PORT || new URL(request.url).port || '3000'
+      const statusUrl = new URL(RUTA_STATUS, `http://127.0.0.1:${port}`)
       const res = await fetch(statusUrl, { cache: 'no-store' })
       if (res.ok) {
         const data = (await res.json()) as { initialized: boolean }
@@ -110,7 +116,7 @@ export async function middleware(request: NextRequest) {
     const response = NextResponse.redirect(new URL('/login', request.url))
     response.cookies.set(COOKIE_NAME, '', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isCookieSecure(),
       sameSite: 'lax',
       path: '/',
       maxAge: 0,

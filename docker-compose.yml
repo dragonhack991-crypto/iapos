@@ -32,6 +32,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
+      # Set COOKIE_SECURE=true only when serving over HTTPS.
+      # Leave as false (default) for HTTP LAN / development deployments.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
       - "3000:3000"
 
