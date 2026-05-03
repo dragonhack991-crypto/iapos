@@ -78,22 +78,35 @@ function listarCajas(
 /** Replicates middleware stale-cookie recovery logic */
 function middlewareRecovery(params: {
   initCookiePresent: boolean
+  /** true when the session cookie is present (not necessarily valid) */
+  jwtPresent: boolean
+  /** true when the JWT is cryptographically valid */
   jwtValid: boolean
   dbInitialized: boolean
 }): { action: 'pass' | 'redirect_login' | 'redirect_setup'; clearInitCookie: boolean; clearJwt: boolean } {
-  const { initCookiePresent, jwtValid, dbInitialized } = params
+  const { initCookiePresent, jwtPresent, jwtValid, dbInitialized } = params
 
-  // No JWT – unauthenticated access to protected route
-  if (!jwtValid) {
-    // Stale init cookie + DB reset → go to /setup
-    if (initCookiePresent && !dbInitialized) {
-      return { action: 'redirect_setup', clearInitCookie: true, clearJwt: false }
-    }
-    // Normal: JWT missing or invalid → go to /login
-    return { action: 'redirect_login', clearInitCookie: false, clearJwt: true }
+  // Authenticated user — pass through
+  if (jwtValid) {
+    return { action: 'pass', clearInitCookie: false, clearJwt: false }
   }
 
-  return { action: 'pass', clearInitCookie: false, clearJwt: false }
+  // No JWT token present
+  if (!jwtPresent) {
+    if (initCookiePresent && !dbInitialized) {
+      // Stale init cookie + DB reset → /setup, clear init cookie only (no JWT to clear)
+      return { action: 'redirect_setup', clearInitCookie: true, clearJwt: false }
+    }
+    return { action: 'redirect_login', clearInitCookie: false, clearJwt: false }
+  }
+
+  // JWT present but invalid (e.g., secret changed after restart)
+  if (initCookiePresent && !dbInitialized) {
+    // Stale init cookie + invalid JWT + DB reset → /setup, clear both cookies
+    return { action: 'redirect_setup', clearInitCookie: true, clearJwt: true }
+  }
+  // JWT invalid but DB is still intact → /login, clear JWT only
+  return { action: 'redirect_login', clearInitCookie: false, clearJwt: true }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,6 +244,7 @@ describe('3 – Stale cookie recovery after Docker restart', () => {
   it('valid JWT + DB intact → authenticated user passes through', () => {
     const result = middlewareRecovery({
       initCookiePresent: true,
+      jwtPresent: true,
       jwtValid: true,
       dbInitialized: true,
     })
@@ -242,6 +256,7 @@ describe('3 – Stale cookie recovery after Docker restart', () => {
   it('JWT expired + DB intact → redirect to /login, clear JWT', () => {
     const result = middlewareRecovery({
       initCookiePresent: true,
+      jwtPresent: true,
       jwtValid: false,
       dbInitialized: true,
     })
@@ -253,21 +268,25 @@ describe('3 – Stale cookie recovery after Docker restart', () => {
   it('stale init cookie + JWT missing + DB reset → redirect to /setup, clear init cookie', () => {
     const result = middlewareRecovery({
       initCookiePresent: true,
+      jwtPresent: false,
       jwtValid: false,
       dbInitialized: false,
     })
     expect(result.action).toBe('redirect_setup')
     expect(result.clearInitCookie).toBe(true)
+    expect(result.clearJwt).toBe(false) // no JWT present, nothing to clear
   })
 
-  it('stale init cookie + invalid JWT (secret changed) + DB reset → redirect to /setup', () => {
+  it('stale init cookie + invalid JWT (secret changed) + DB reset → redirect to /setup, clear both', () => {
     const result = middlewareRecovery({
       initCookiePresent: true,
+      jwtPresent: true,
       jwtValid: false, // secret changed → token invalid
       dbInitialized: false, // volume purged
     })
     expect(result.action).toBe('redirect_setup')
     expect(result.clearInitCookie).toBe(true)
+    expect(result.clearJwt).toBe(true) // stale JWT should also be cleared
   })
 
   it('no init cookie (fresh browser) + DB initialized → normal flow (restoreCookie)', () => {
@@ -291,13 +310,15 @@ describe('3 – Stale cookie recovery after Docker restart', () => {
     // /setup automatically. The user does not need to manually clear cookies.
     const scenarioCookiesStale = middlewareRecovery({
       initCookiePresent: true,
+      jwtPresent: true,
       jwtValid: false,
       dbInitialized: false,
     })
     // Automatic recovery means the middleware itself clears the stale cookies.
     expect(scenarioCookiesStale.action).toBe('redirect_setup')
     expect(scenarioCookiesStale.clearInitCookie).toBe(true)
+    expect(scenarioCookiesStale.clearJwt).toBe(true)
     // (The actual cookie deletion happens in the middleware response headers –
-    // verified here that the flag is set so the production code will delete it.)
+    // verified here that the flags are set so the production code will delete them.)
   })
 })

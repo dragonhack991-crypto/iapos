@@ -296,7 +296,11 @@ export default function CajaPage() {
             </div>
             <button
               onClick={abrirCaja}
-              disabled={submitting || !cajaSeleccionada}
+              disabled={
+                submitting ||
+                !cajaSeleccionada ||
+                !!cajas.find((c) => c.id === cajaSeleccionada)?.sesionAbierta
+              }
               className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-2.5 rounded-lg transition"
             >
               {submitting ? 'Abriendo...' : '✅ Abrir caja'}
