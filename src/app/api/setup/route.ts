@@ -108,6 +108,11 @@ export async function POST(request: NextRequest) {
         update: {},
         create: { id: 'caja-1', nombre: 'Caja 1', sucursalId: sucursal.id },
       })
+      await tx.caja.upsert({
+        where: { id: 'caja-2' },
+        update: {},
+        create: { id: 'caja-2', nombre: 'Caja 2', sucursalId: sucursal.id },
+      })
 
       await tx.configuracionSistema.create({
         data: { clave: 'configurado', valor: 'true' },
