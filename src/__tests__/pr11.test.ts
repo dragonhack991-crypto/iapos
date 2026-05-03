@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PR10 blockers – test suite
+// PR11 – PR10 blocker fixes
 //
 // All helpers are pure-logic replicas of the production code so tests run
 // without a DB or Next.js runtime.
