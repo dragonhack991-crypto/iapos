@@ -4,7 +4,10 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 
 const setupSchema = z.object({
-  nombreNegocio: z.string().min(1),
+  nombreNegocio: z
+    .string()
+    .trim()
+    .min(2, 'El nombre del negocio debe tener al menos 2 caracteres'),
   admin: z.object({
     nombre: z.string().min(1),
     email: z.string().email(),
@@ -18,7 +21,7 @@ export async function POST(request: NextRequest) {
       where: { clave: 'configurado' },
     })
     if (existente) {
-      return NextResponse.json({ error: 'El sistema ya está configurado' }, { status: 400 })
+      return NextResponse.json({ error: 'El sistema ya está configurado' }, { status: 409 })
     }
 
     const body = await request.json()
@@ -89,10 +92,27 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    return NextResponse.json({ ok: true })
+    const response = NextResponse.json({ ok: true })
+    // Signal to middleware that the system has been initialized.
+    // This is a routing convenience flag – actual security is enforced by the
+    // JWT session token and the DB guard above.
+    response.cookies.set('iapos_initialized', '1', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+    })
+    return response
   } catch (e) {
     if (e instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Datos inválidos', detalles: e.errors }, { status: 400 })
+      return NextResponse.json(
+        {
+          error: e.errors[0]?.message ?? 'Datos inválidos',
+          detalles: process.env.NODE_ENV === 'development' ? e.errors : undefined,
+        },
+        { status: 422 }
+      )
     }
     console.error(e)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
