@@ -26,6 +26,10 @@ export async function GET(
     return NextResponse.json({ error: 'Sesión no encontrada o ya cerrada' }, { status: 404 })
   }
 
+  if (sesionCaja.usuarioAperturaId !== sesion.sub) {
+    return NextResponse.json({ error: 'La sesión de caja pertenece a otro usuario' }, { status: 403 })
+  }
+
   const ventas = await prisma.venta.findMany({
     where: { sesionCajaId: params.id, estado: 'COMPLETADA' },
     select: { total: true, metodoPago: true },
@@ -65,6 +69,10 @@ export async function PATCH(
     const sesionCaja = await prisma.sesionCaja.findUnique({ where: { id: params.id } })
     if (!sesionCaja || sesionCaja.estado !== 'ABIERTA') {
       return NextResponse.json({ error: 'Sesión no encontrada o ya cerrada' }, { status: 404 })
+    }
+
+    if (sesionCaja.usuarioAperturaId !== sesion.sub) {
+      return NextResponse.json({ error: 'La sesión de caja pertenece a otro usuario' }, { status: 403 })
     }
 
     // Compute corte Z summary totals from active (COMPLETADA) ventas in this session
