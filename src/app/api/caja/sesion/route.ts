@@ -13,7 +13,7 @@ export async function GET() {
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const sesionCaja = await prisma.sesionCaja.findFirst({
-    where: { estado: 'ABIERTA' },
+    where: { estado: 'ABIERTA', usuarioAperturaId: sesion.sub },
     include: {
       caja: {
         include: { sucursal: true },
