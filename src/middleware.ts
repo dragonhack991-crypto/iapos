@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verificarToken, COOKIE_NAME } from './lib/auth'
+import { isCookieSecure } from './lib/cookies'
 
 const INITIALIZED_COOKIE = 'iapos_initialized'
 
@@ -23,11 +24,35 @@ const RUTAS_ESTATICAS = ['/_next', '/favicon']
 function attachInitCookie(response: NextResponse): void {
   response.cookies.set(INITIALIZED_COOKIE, '1', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isCookieSecure(),
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 365, // 1 year
   })
+}
+
+/**
+ * Probe the internal /api/system/status route to determine whether the system
+ * is truly initialized in the DB.  Always resolves via 127.0.0.1 so Docker
+ * containers don't need to reach themselves via their LAN IP.
+ *
+ * Returns true on network failure (fail-open) to avoid incorrectly sending
+ * a valid, authenticated user to /setup during a transient DB hiccup.
+ */
+async function probeSystemInitialized(port: string): Promise<boolean> {
+  try {
+    const statusUrl = new URL(RUTA_STATUS, `http://127.0.0.1:${port}`)
+    const res = await fetch(statusUrl, { cache: 'no-store' })
+    if (res.ok) {
+      const data = (await res.json()) as { initialized: boolean }
+      return data.initialized
+    }
+  } catch (err) {
+    console.error('[middleware] Status probe failed:', err)
+  }
+  // Fail-open: if we cannot reach the probe, assume still initialized so we
+  // don't accidentally wipe a valid session during a transient cold-start.
+  return true
 }
 
 export async function middleware(request: NextRequest) {
@@ -43,12 +68,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  const port = process.env.PORT || new URL(request.url).port || '3000'
+
   // ── Resolve isInitialized: cookie (fast-path) → DB fallback ──────────────
   //
   // The `iapos_initialized` cookie is a routing performance optimisation only.
   // When the cookie is absent (e.g. cookies cleared, new browser), we fall
   // back to an internal DB query so the middleware never incorrectly treats
   // an already-configured system as uninitialised.
+  //
+  // We always fetch via 127.0.0.1:PORT so the request resolves locally within
+  // the container, regardless of the external hostname or LAN IP the client
+  // used to reach the server.
   //
   // Actual security is enforced by JWT token validation below; the /api/setup
   // endpoint independently guards against re-initialisation via DB check.
@@ -57,19 +88,9 @@ export async function middleware(request: NextRequest) {
   let restoreCookie = false // true when DB confirmed initialized but cookie was absent
 
   if (!cookiePresent) {
-    try {
-      const statusUrl = new URL(RUTA_STATUS, request.url)
-      const res = await fetch(statusUrl, { cache: 'no-store' })
-      if (res.ok) {
-        const data = (await res.json()) as { initialized: boolean }
-        isInitialized = data.initialized
-        if (data.initialized) restoreCookie = true
-      }
-    } catch (err) {
-      // Status probe failed (e.g. cold start, DB unreachable).
-      // Keep isInitialized = false so /setup remains accessible.
-      console.error('[middleware] Status probe failed:', err)
-    }
+    const dbInit = await probeSystemInitialized(port)
+    isInitialized = dbInit
+    if (dbInit) restoreCookie = true
   }
 
   // ── System NOT yet initialized ────────────────────────────────────────────
@@ -99,6 +120,27 @@ export async function middleware(request: NextRequest) {
   // Validate auth token for all remaining (protected) routes
   const token = request.cookies.get(COOKIE_NAME)?.value
   if (!token) {
+    // ── Stale init-cookie recovery ────────────────────────────────────────
+    // The init cookie was present (trusted above), but the user has no JWT.
+    // Re-verify the DB to catch the case where the DB was reset (volume
+    // purged) after Docker restart: if the system is no longer initialized,
+    // clear the stale init cookie and redirect to /setup so the user can
+    // configure the system again without manual cookie clearing.
+    if (cookiePresent) {
+      const stillInitialized = await probeSystemInitialized(port)
+      if (!stillInitialized) {
+        console.info('[middleware] Stale iapos_initialized cookie detected – redirecting to /setup')
+        const response = NextResponse.redirect(new URL('/setup', request.url))
+        response.cookies.set(INITIALIZED_COOKIE, '', {
+          httpOnly: true,
+          secure: isCookieSecure(),
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 0,
+        })
+        return response
+      }
+    }
     const response = NextResponse.redirect(new URL('/login', request.url))
     if (restoreCookie) attachInitCookie(response)
     return response
@@ -106,11 +148,38 @@ export async function middleware(request: NextRequest) {
 
   const payload = await verificarToken(token)
   if (!payload) {
-    // Clear the invalid/expired cookie and redirect to login
+    // ── Stale init-cookie recovery (invalid JWT path) ─────────────────────
+    // JWT is cryptographically invalid (e.g. secret changed after restart).
+    // If the init cookie was trusted (cookie path, not DB), re-verify DB.
+    // If the system is no longer initialized, clear both stale cookies and
+    // redirect to /setup.
+    if (cookiePresent) {
+      const stillInitialized = await probeSystemInitialized(port)
+      if (!stillInitialized) {
+        console.info('[middleware] Stale cookies detected after restart – redirecting to /setup')
+        const response = NextResponse.redirect(new URL('/setup', request.url))
+        response.cookies.set(INITIALIZED_COOKIE, '', {
+          httpOnly: true,
+          secure: isCookieSecure(),
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 0,
+        })
+        response.cookies.set(COOKIE_NAME, '', {
+          httpOnly: true,
+          secure: isCookieSecure(),
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 0,
+        })
+        return response
+      }
+    }
+    // Clear the invalid/expired JWT cookie and redirect to login
     const response = NextResponse.redirect(new URL('/login', request.url))
     response.cookies.set(COOKIE_NAME, '', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isCookieSecure(),
       sameSite: 'lax',
       path: '/',
       maxAge: 0,

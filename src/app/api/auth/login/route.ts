@@ -3,6 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { crearToken, obtenerPermisos, COOKIE_NAME } from '@/lib/auth'
+import { isCookieSecure } from '@/lib/cookies'
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -32,10 +33,11 @@ export async function POST(request: NextRequest) {
       permisos,
     })
 
+    const secure = isCookieSecure()
     const response = NextResponse.json({ ok: true, nombre: usuario.nombre })
     response.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure,
       sameSite: 'lax',
       maxAge: 60 * 60 * 8,
       path: '/',
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
     // system is set up even after browser cookies have been cleared.
     response.cookies.set('iapos_initialized', '1', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure,
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 365,

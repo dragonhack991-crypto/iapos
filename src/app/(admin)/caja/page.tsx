@@ -2,6 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
+interface CajaInfo {
+  id: string
+  nombre: string
+  sucursal: string
+  sesionAbierta: { id: string; usuarioAperturaId: string } | null
+}
+
 interface SesionCaja {
   id: string
   cajaId: string
@@ -25,6 +32,8 @@ interface ResumenCorteZ {
 }
 
 export default function CajaPage() {
+  const [cajas, setCajas] = useState<CajaInfo[]>([])
+  const [cajaSeleccionada, setCajaSeleccionada] = useState<string>('')
   const [sesion, setSesion] = useState<SesionCaja | null>(null)
   const [loading, setLoading] = useState(true)
   const [montoInicial, setMontoInicial] = useState('')
@@ -35,11 +44,20 @@ export default function CajaPage() {
   const [corteZ, setCorteZ] = useState<ResumenCorteZ | null>(null)
   const [efectivoEsperado, setEfectivoEsperado] = useState<number | null>(null)
 
-  const cargarSesion = useCallback(async () => {
+  const cargarDatos = useCallback(async () => {
     try {
-      const res = await fetch('/api/caja/sesion')
-      if (res.ok) {
-        const data = await res.json()
+      const [sesionRes, cajasRes] = await Promise.all([
+        fetch('/api/caja/sesion'),
+        fetch('/api/cajas'),
+      ])
+
+      if (cajasRes.ok) {
+        const cajasData = await cajasRes.json()
+        setCajas(cajasData.cajas ?? [])
+      }
+
+      if (sesionRes.ok) {
+        const data = await sesionRes.json()
         setSesion(data.sesion)
         // Load efectivoEsperado preview if session is open
         if (data.sesion) {
@@ -55,13 +73,25 @@ export default function CajaPage() {
     }
   }, [])
 
+  // Auto-select first free caja when cajas list loads and no sesion is open
   useEffect(() => {
-    cargarSesion()
-  }, [cargarSesion])
+    if (cajas.length > 0 && !sesion && !cajaSeleccionada) {
+      const libre = cajas.find((c) => !c.sesionAbierta)
+      if (libre) setCajaSeleccionada(libre.id)
+    }
+  }, [cajas, sesion, cajaSeleccionada])
+
+  useEffect(() => {
+    cargarDatos()
+  }, [cargarDatos])
 
   async function abrirCaja() {
     if (!montoInicial || isNaN(parseFloat(montoInicial))) {
       setError('Ingresa un monto inicial válido')
+      return
+    }
+    if (!cajaSeleccionada) {
+      setError('Selecciona una caja para abrir')
       return
     }
     setSubmitting(true)
@@ -70,7 +100,7 @@ export default function CajaPage() {
       const res = await fetch('/api/caja/sesion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cajaId: 'caja-1', montoInicial: parseFloat(montoInicial) }),
+        body: JSON.stringify({ cajaId: cajaSeleccionada, montoInicial: parseFloat(montoInicial) }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -81,6 +111,12 @@ export default function CajaPage() {
       setCorteZ(null)
       setMontoInicial('')
       setEfectivoEsperado(parseFloat(montoInicial))
+      // Refresh caja list to reflect new open session
+      const cajasRes = await fetch('/api/cajas')
+      if (cajasRes.ok) {
+        const cajasData = await cajasRes.json()
+        setCajas(cajasData.cajas ?? [])
+      }
     } finally {
       setSubmitting(false)
     }
@@ -110,6 +146,12 @@ export default function CajaPage() {
       setObservaciones('')
       setEfectivoEsperado(null)
       if (data.resumen) setCorteZ(data.resumen)
+      // Refresh caja list to reflect closed session
+      const cajasRes = await fetch('/api/cajas')
+      if (cajasRes.ok) {
+        const cajasData = await cajasRes.json()
+        setCajas(cajasData.cajas ?? [])
+      }
     } finally {
       setSubmitting(false)
     }
@@ -208,6 +250,36 @@ export default function CajaPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Abrir caja</h2>
           <div className="space-y-4">
+            {/* Caja selector — shown only when multiple cajas exist */}
+            {cajas.length > 1 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Seleccionar caja
+                </label>
+                <select
+                  value={cajaSeleccionada}
+                  onChange={(e) => setCajaSeleccionada(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                >
+                  <option value="">— Elige una caja —</option>
+                  {cajas.map((c) => (
+                    <option
+                      key={c.id}
+                      value={c.id}
+                      disabled={!!c.sesionAbierta}
+                    >
+                      {c.nombre} — {c.sucursal}
+                      {c.sesionAbierta ? ' (ocupada)' : ' (libre)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {cajas.length === 1 && cajas[0].sesionAbierta && (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg text-sm">
+                {cajas[0].nombre} ya tiene una sesión abierta por otro usuario.
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Monto inicial (MXN)
@@ -224,7 +296,11 @@ export default function CajaPage() {
             </div>
             <button
               onClick={abrirCaja}
-              disabled={submitting}
+              disabled={
+                submitting ||
+                !cajaSeleccionada ||
+                !!cajas.find((c) => c.id === cajaSeleccionada)?.sesionAbierta
+              }
               className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-2.5 rounded-lg transition"
             >
               {submitting ? 'Abriendo...' : '✅ Abrir caja'}

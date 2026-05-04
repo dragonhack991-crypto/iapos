@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useRouter } from 'next/navigation'
 
 interface LoginForm {
   email: string
@@ -12,7 +11,6 @@ interface LoginForm {
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
 
   const {
     register,
@@ -34,8 +32,11 @@ export default function LoginPage() {
         setError(json.error || 'Error al iniciar sesión')
         return
       }
-      router.push('/dashboard')
-      router.refresh()
+      // Use a hard redirect so the session cookie is included in the next
+      // request from the very first page load – this prevents mobile browsers
+      // (and any browser) from navigating to a cached/prefetched page before
+      // the cookie is applied, which caused auth failures on some mobile devices.
+      window.location.replace('/dashboard')
     } catch {
       setError('Error de conexión')
     } finally {

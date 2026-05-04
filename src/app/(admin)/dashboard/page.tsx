@@ -9,7 +9,9 @@ export default async function DashboardPage() {
   const [totalProductos, totalUsuarios, sesionCajaAbierta] = await Promise.all([
     prisma.producto.count({ where: { activo: true } }),
     prisma.usuario.count({ where: { activo: true } }),
-    prisma.sesionCaja.findFirst({ where: { estado: 'ABIERTA' } }),
+    prisma.sesionCaja.findFirst({
+      where: { estado: 'ABIERTA', usuarioAperturaId: sesion!.sub },
+    }),
   ])
 
   return (
@@ -29,7 +31,7 @@ export default async function DashboardPage() {
           color="blue"
         />
         <StatCard
-          title="Usuarios activos"
+          title="Usuarios registrados"
           value={totalUsuarios.toString()}
           icon="👥"
           color="green"

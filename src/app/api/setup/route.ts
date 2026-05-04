@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
         update: {},
         create: { nombre: 'Administrador', descripcion: 'Acceso total' },
       })
-      await tx.rol.upsert({ where: { nombre: 'Cajero' }, update: {}, create: { nombre: 'Cajero', descripcion: 'Operador de caja' } })
-      await tx.rol.upsert({ where: { nombre: 'Vendedor' }, update: {}, create: { nombre: 'Vendedor', descripcion: 'Realizar ventas' } })
+      const rolCajero = await tx.rol.upsert({ where: { nombre: 'Cajero' }, update: {}, create: { nombre: 'Cajero', descripcion: 'Operador de caja' } })
+      const rolVendedor = await tx.rol.upsert({ where: { nombre: 'Vendedor' }, update: {}, create: { nombre: 'Vendedor', descripcion: 'Realizar ventas' } })
 
       const todosPermisos = await tx.permiso.findMany()
       for (const p of todosPermisos) {
@@ -63,6 +63,31 @@ export async function POST(request: NextRequest) {
           update: {},
           create: { rolId: rolAdmin.id, permisoId: p.id },
         })
+      }
+
+      // Assign specific permissions for Cajero and Vendedor roles
+      const permisosCajero = ['ver_dashboard', 'vender', 'cancelar_venta', 'abrir_caja', 'cerrar_caja']
+      for (const nombrePermiso of permisosCajero) {
+        const p = todosPermisos.find((x) => x.nombre === nombrePermiso)
+        if (p) {
+          await tx.rolPermiso.upsert({
+            where: { rolId_permisoId: { rolId: rolCajero.id, permisoId: p.id } },
+            update: {},
+            create: { rolId: rolCajero.id, permisoId: p.id },
+          })
+        }
+      }
+
+      const permisosVendedor = ['ver_dashboard', 'vender']
+      for (const nombrePermiso of permisosVendedor) {
+        const p = todosPermisos.find((x) => x.nombre === nombrePermiso)
+        if (p) {
+          await tx.rolPermiso.upsert({
+            where: { rolId_permisoId: { rolId: rolVendedor.id, permisoId: p.id } },
+            update: {},
+            create: { rolId: rolVendedor.id, permisoId: p.id },
+          })
+        }
       }
 
       const usuario = await tx.usuario.create({
@@ -82,6 +107,11 @@ export async function POST(request: NextRequest) {
         where: { id: 'caja-1' },
         update: {},
         create: { id: 'caja-1', nombre: 'Caja 1', sucursalId: sucursal.id },
+      })
+      await tx.caja.upsert({
+        where: { id: 'caja-2' },
+        update: {},
+        create: { id: 'caja-2', nombre: 'Caja 2', sucursalId: sucursal.id },
       })
 
       await tx.configuracionSistema.create({
