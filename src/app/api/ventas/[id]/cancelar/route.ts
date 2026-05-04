@@ -106,8 +106,8 @@ export async function POST(
     )
   }
 
-  const sucursalId = venta.sesionCaja?.caja?.sucursalId ?? undefined
-  const cajaId = venta.sesionCaja?.cajaId ?? undefined
+  const sucursalId = venta.sesionCaja?.caja?.sucursalId
+  const cajaId = venta.sesionCaja?.cajaId
 
   try {
     const ventaCancelada = await prisma.$transaction(async (tx) => {
