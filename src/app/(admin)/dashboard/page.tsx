@@ -9,7 +9,9 @@ export default async function DashboardPage() {
   const [totalProductos, totalUsuarios, sesionCajaAbierta] = await Promise.all([
     prisma.producto.count({ where: { activo: true } }),
     prisma.usuario.count({ where: { activo: true } }),
-    prisma.sesionCaja.findFirst({ where: { estado: 'ABIERTA' } }),
+    sesion
+      ? prisma.sesionCaja.findFirst({ where: { estado: 'ABIERTA', usuarioAperturaId: sesion.sub } })
+      : null,
   ])
 
   return (

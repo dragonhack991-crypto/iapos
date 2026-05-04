@@ -101,12 +101,15 @@ export default function VentasPage() {
 
   // Authorization escalation for cart item removal
   const [authEliminar, setAuthEliminar] = useState<{ productoId: string } | null>(null)
+  // Cache of the current user's direct permission to remove cart items (loaded at mount)
+  const [puedeEliminarItem, setPuedeEliminarItem] = useState<boolean | null>(null)
 
   const cargarDatos = useCallback(async () => {
     try {
-      const [resProductos, resSesion] = await Promise.all([
+      const [resProductos, resSesion, resPermiso] = await Promise.all([
         fetch('/api/productos'),
         fetch('/api/caja/sesion'),
+        fetch('/api/autorizaciones/verificar-permiso?permiso=eliminar_item_carrito'),
       ])
       if (resProductos.ok) {
         const data = await resProductos.json()
@@ -115,6 +118,13 @@ export default function VentasPage() {
       if (resSesion.ok) {
         const data = await resSesion.json()
         setSesionCaja(data.sesion || null)
+      }
+      if (resPermiso.ok) {
+        const data = await resPermiso.json()
+        setPuedeEliminarItem(Boolean(data.tiene))
+      } else {
+        // On error, default to requiring authorization (more secure)
+        setPuedeEliminarItem(false)
       }
     } finally {
       setLoading(false)
@@ -190,22 +200,13 @@ export default function VentasPage() {
 
   function actualizarCantidad(productoId: string, nuevaCantidad: number) {
     if (nuevaCantidad <= 0) {
-      // Removing an item requires the eliminar_item_carrito action to be authorized
-      // We send a test request to check if the user has direct permission
-      fetch('/api/autorizaciones/verificar-permiso?permiso=eliminar_item_carrito')
-        .then(async (res) => {
-          const data = await res.json()
-          if (data.tiene) {
-            setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
-            setError(null)
-          } else {
-            setAuthEliminar({ productoId })
-          }
-        })
-        .catch(() => {
-          // Fallback: show auth modal on any error
-          setAuthEliminar({ productoId })
-        })
+      // Removing an item: check cached permission loaded at mount time
+      if (puedeEliminarItem) {
+        setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
+        setError(null)
+      } else {
+        setAuthEliminar({ productoId })
+      }
       return
     }
     const item = carrito.find((i) => i.producto.id === productoId)
