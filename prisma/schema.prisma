@@ -112,7 +112,7 @@ model AuditoriaAccion {
   motivo        String
   sucursalId    String?
   cajaId        String?
-  // Stores item detail for eliminar_item_carrito actions (productoId, nombre, cantidad, precioUnitario, subtotal, sesionCajaId)
+  // Stores item detail for eliminar_item_carrito actions (productoId, sku, nombre, cantidad, precioUnitario, subtotal, sesionCajaId)
   detalle       Json?
   creadoEn      DateTime  @default(now())
   solicitante   Usuario   @relation("AuditoriaSolicitante", fields: [solicitanteId], references: [id])

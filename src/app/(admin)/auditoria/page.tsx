@@ -41,6 +41,11 @@ const ACCION_LABELS: Record<string, string> = {
   eliminar_item_carrito: 'Eliminar ítem carrito',
 }
 
+function formatCurrency(value: number | unknown): string {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n.toFixed(2) : '—'
+}
+
 export default function AuditoriaPage() {
   const [eventos, setEventos] = useState<AuditoriaEvento[]>([])
   const [pagination, setPagination] = useState<Pagination>({ total: 0, page: 1, perPage: 20, totalPages: 1 })
@@ -252,9 +257,9 @@ export default function AuditoriaPage() {
                                 <p className="text-gray-400 font-mono">SKU: {ev.detalle.sku}</p>
                               )}
                               <p>
-                                {ev.detalle.cantidad} × ${typeof ev.detalle.precioUnitario === 'number' ? ev.detalle.precioUnitario.toFixed(2) : ev.detalle.precioUnitario}
+                                {ev.detalle.cantidad} × ${formatCurrency(ev.detalle.precioUnitario)}
                                 {' = '}
-                                <span className="font-semibold">${typeof ev.detalle.subtotal === 'number' ? ev.detalle.subtotal.toFixed(2) : ev.detalle.subtotal}</span>
+                                <span className="font-semibold">${formatCurrency(ev.detalle.subtotal)}</span>
                               </p>
                             </div>
                           ) : (

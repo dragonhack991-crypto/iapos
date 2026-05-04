@@ -3,8 +3,17 @@ import { describe, it, expect } from 'vitest'
 // ─────────────────────────────────────────────────────────────────────────────
 // PR12 – Security hardening & audit detail
 //
-// Pure-logic helpers replicate route/component behaviour so tests run in
-// isolation (no DB, no Next.js runtime required).
+// Covers:
+//  1. isCookieSecure() — COOKIE_SECURE env var overrides NODE_ENV
+//  2. Logout cookie attribute consistency (same as login → correct invalidation)
+//  3. Hard redirect contract for login/logout (BF-cache / mobile safety)
+//  4. verificar-permiso live DB check (never stale JWT claims)
+//  5. Authorization token lifecycle (inline for cart, two-step for venta)
+//  6. Audit detalle structure for cart item deletion
+//  7. Direct permission override skips authorization modal
+//
+// All helpers are pure-logic replicas of route/component behaviour so tests
+// run in isolation (no DB, no Next.js runtime required).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Cookie secure flag ────────────────────────────────────────────────────────

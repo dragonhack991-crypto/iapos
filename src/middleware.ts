@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verificarToken, COOKIE_NAME } from './lib/auth'
+import { isCookieSecure } from './lib/cookies'
 
 const INITIALIZED_COOKIE = 'iapos_initialized'
 
@@ -23,7 +24,7 @@ const RUTAS_ESTATICAS = ['/_next', '/favicon']
 function attachInitCookie(response: NextResponse): void {
   response.cookies.set(INITIALIZED_COOKIE, '1', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isCookieSecure(),
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 365, // 1 year
@@ -110,7 +111,7 @@ export async function middleware(request: NextRequest) {
     const response = NextResponse.redirect(new URL('/login', request.url))
     response.cookies.set(COOKIE_NAME, '', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isCookieSecure(),
       sameSite: 'lax',
       path: '/',
       maxAge: 0,
