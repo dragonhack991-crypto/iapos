@@ -284,11 +284,13 @@ export default function AdminCajasPage() {
                   <td className="px-4 py-3">
                     <select
                       value={caja.usuarioAsignado?.id ?? ''}
-                      onChange={(e) => asignarUsuario(caja.id, e.target.value || null)}
+                      onChange={(e) => { if (e.target.value) asignarUsuario(caja.id, e.target.value) }}
                       disabled={submitting}
                       className="text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500"
                     >
-                      <option value="">Sin asignación</option>
+                      {caja.usuarioAsignado ? null : (
+                        <option value="" disabled>— Selecciona un usuario —</option>
+                      )}
                       {usuarios.map((u) => (
                         <option key={u.id} value={u.id}>{u.nombre}</option>
                       ))}
