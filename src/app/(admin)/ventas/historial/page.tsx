@@ -177,6 +177,11 @@ export default function VentasHistorialPage() {
     await cancelarVenta(token, motivo)
   }
 
+  function handleAuthCancel() {
+    setAuthPendiente(null)
+    setCancelError('Autorización cancelada')
+  }
+
   return (
     <div className="p-8">
       <div className="mb-6">
@@ -586,7 +591,7 @@ export default function VentasHistorialPage() {
           accion="cancelar_venta"
           targetId={authPendiente.ventaId}
           onSuccess={onAuthSuccess}
-          onCancel={() => { setAuthPendiente(null); setCancelError('Autorización cancelada') }}
+          onCancel={handleAuthCancel}
         />
       )}
     </div>
