@@ -19,6 +19,7 @@ model Usuario {
   roles        UsuarioRol[]
   permisosExtra UsuarioPermiso[]
   sesionesApertura SesionCaja[] @relation("UsuarioApertura")
+  cajasAsignadas   Caja[]       @relation("CajaAsignada")
   movimientos  MovimientoInventario[]
   ventas       Venta[]
   ventasCanceladas Venta[]    @relation("UsuarioCancelacion")
@@ -140,13 +141,15 @@ model Sucursal {
 }
 
 model Caja {
-  id         String      @id @default(cuid())
-  nombre     String
-  sucursalId String
-  activo     Boolean     @default(true)
-  creadoEn   DateTime    @default(now())
-  sucursal   Sucursal    @relation(fields: [sucursalId], references: [id])
-  sesiones   SesionCaja[]
+  id                String      @id @default(cuid())
+  nombre            String
+  sucursalId        String
+  activo            Boolean     @default(true)
+  usuarioAsignadoId String?
+  creadoEn          DateTime    @default(now())
+  sucursal          Sucursal    @relation(fields: [sucursalId], references: [id])
+  usuarioAsignado   Usuario?    @relation("CajaAsignada", fields: [usuarioAsignadoId], references: [id])
+  sesiones          SesionCaja[]
 
   @@map("cajas")
 }

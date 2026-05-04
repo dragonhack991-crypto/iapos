@@ -2,6 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
+interface CajaInfo {
+  id: string
+  nombre: string
+  sucursal: { nombre: string }
+  usuarioAsignado: { id: string; nombre: string } | null
+  sesionAbierta: { id: string; usuarioAperturaId: string } | null
+}
+
 interface SesionCaja {
   id: string
   cajaId: string
@@ -25,6 +33,8 @@ interface ResumenCorteZ {
 }
 
 export default function CajaPage() {
+  const [cajas, setCajas] = useState<CajaInfo[]>([])
+  const [cajaSeleccionada, setCajaSeleccionada] = useState<string>('')
   const [sesion, setSesion] = useState<SesionCaja | null>(null)
   const [loading, setLoading] = useState(true)
   const [montoInicial, setMontoInicial] = useState('')
@@ -35,12 +45,21 @@ export default function CajaPage() {
   const [corteZ, setCorteZ] = useState<ResumenCorteZ | null>(null)
   const [efectivoEsperado, setEfectivoEsperado] = useState<number | null>(null)
 
-  const cargarSesion = useCallback(async () => {
+  const cargarDatos = useCallback(async () => {
     try {
-      const res = await fetch('/api/caja/sesion')
-      if (res.ok) {
-        const data = await res.json()
-        setSesion(data.sesion)
+      const [resCajas, resSesion] = await Promise.all([
+        fetch('/api/caja/cajas'),
+        fetch('/api/caja/sesion'),
+      ])
+      if (resCajas.ok) {
+        const data = await resCajas.json()
+        setCajas(data.cajas || [])
+        const primera = (data.cajas as CajaInfo[]).find((c) => !c.sesionAbierta)
+        if (primera) setCajaSeleccionada(primera.id)
+      }
+      if (resSesion.ok) {
+        const data = await resSesion.json()
+        setSesion(data.sesion || null)
         // Load efectivoEsperado preview if session is open
         if (data.sesion) {
           const preview = await fetch(`/api/caja/sesion/${data.sesion.id}`)
@@ -56,10 +75,14 @@ export default function CajaPage() {
   }, [])
 
   useEffect(() => {
-    cargarSesion()
-  }, [cargarSesion])
+    cargarDatos()
+  }, [cargarDatos])
 
   async function abrirCaja() {
+    if (!cajaSeleccionada) {
+      setError('Selecciona una caja para abrir')
+      return
+    }
     if (!montoInicial || isNaN(parseFloat(montoInicial))) {
       setError('Ingresa un monto inicial válido')
       return
@@ -70,7 +93,7 @@ export default function CajaPage() {
       const res = await fetch('/api/caja/sesion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cajaId: 'caja-1', montoInicial: parseFloat(montoInicial) }),
+        body: JSON.stringify({ cajaId: cajaSeleccionada, montoInicial: parseFloat(montoInicial) }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -81,6 +104,12 @@ export default function CajaPage() {
       setCorteZ(null)
       setMontoInicial('')
       setEfectivoEsperado(parseFloat(montoInicial))
+      // Refresh caja list to update sesionAbierta status
+      const resCajas = await fetch('/api/caja/cajas')
+      if (resCajas.ok) {
+        const dc = await resCajas.json()
+        setCajas(dc.cajas || [])
+      }
     } finally {
       setSubmitting(false)
     }
@@ -110,6 +139,14 @@ export default function CajaPage() {
       setObservaciones('')
       setEfectivoEsperado(null)
       if (data.resumen) setCorteZ(data.resumen)
+      // Refresh caja list so freed caja becomes selectable again
+      const resCajas = await fetch('/api/caja/cajas')
+      if (resCajas.ok) {
+        const dc = await resCajas.json()
+        setCajas(dc.cajas || [])
+        const primera = (dc.cajas as CajaInfo[]).find((c) => !c.sesionAbierta)
+        if (primera) setCajaSeleccionada(primera.id)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -121,6 +158,9 @@ export default function CajaPage() {
     efectivoEsperado !== null && montoContadoNum !== null
       ? Math.round((montoContadoNum - efectivoEsperado) * 100) / 100
       : null
+
+  // Cajas libres (without an open session, so user can open one)
+  const cajasLibres = cajas.filter((c) => !c.sesionAbierta)
 
   if (loading) {
     return (
@@ -207,7 +247,36 @@ export default function CajaPage() {
       {!sesion ? (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Abrir caja</h2>
+
+          {cajasLibres.length === 0 && cajas.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm mb-4">
+              No hay cajas disponibles. Todas tienen sesiones abiertas por otros usuarios.
+            </div>
+          )}
+
           <div className="space-y-4">
+            {cajas.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Caja
+                </label>
+                <select
+                  value={cajaSeleccionada}
+                  onChange={(e) => setCajaSeleccionada(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                >
+                  <option value="">— Selecciona una caja —</option>
+                  {cajas.map((c) => (
+                    <option key={c.id} value={c.id} disabled={!!c.sesionAbierta}>
+                      {c.nombre}
+                      {c.sucursal ? ` — ${c.sucursal.nombre}` : ''}
+                      {c.sesionAbierta ? ' (en uso)' : ''}
+                      {c.usuarioAsignado ? ` [asignada a ${c.usuarioAsignado.nombre}]` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Monto inicial (MXN)
@@ -224,7 +293,7 @@ export default function CajaPage() {
             </div>
             <button
               onClick={abrirCaja}
-              disabled={submitting}
+              disabled={submitting || cajasLibres.length === 0}
               className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-2.5 rounded-lg transition"
             >
               {submitting ? 'Abriendo...' : '✅ Abrir caja'}
@@ -236,7 +305,9 @@ export default function CajaPage() {
           <div className="bg-green-50 border border-green-200 rounded-xl p-6">
             <div className="flex items-center gap-2 mb-4">
               <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="font-semibold text-green-800">Caja abierta</span>
+              <span className="font-semibold text-green-800">
+                Caja abierta — {sesion.caja.nombre}
+              </span>
             </div>
             <dl className="grid grid-cols-2 gap-4 text-sm">
               <div>
