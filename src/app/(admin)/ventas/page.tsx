@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import AutorizacionModal from '@/components/AutorizacionModal'
 
 interface Producto {
   id: string
@@ -98,6 +99,9 @@ export default function VentasPage() {
   const [ventaExitosa, setVentaExitosa] = useState<{ id: string; folio: number; cambio: number | null } | null>(null)
   const [granelModal, setGranelModal] = useState<GranelModal | null>(null)
 
+  // Authorization escalation for cart item removal
+  const [authEliminar, setAuthEliminar] = useState<{ productoId: string } | null>(null)
+
   const cargarDatos = useCallback(async () => {
     try {
       const [resProductos, resSesion] = await Promise.all([
@@ -186,8 +190,22 @@ export default function VentasPage() {
 
   function actualizarCantidad(productoId: string, nuevaCantidad: number) {
     if (nuevaCantidad <= 0) {
-      setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
-      setError(null)
+      // Removing an item requires the eliminar_item_carrito action to be authorized
+      // We send a test request to check if the user has direct permission
+      fetch('/api/autorizaciones/verificar-permiso?permiso=eliminar_item_carrito')
+        .then(async (res) => {
+          const data = await res.json()
+          if (data.tiene) {
+            setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
+            setError(null)
+          } else {
+            setAuthEliminar({ productoId })
+          }
+        })
+        .catch(() => {
+          // Fallback: show auth modal on any error
+          setAuthEliminar({ productoId })
+        })
       return
     }
     const item = carrito.find((i) => i.producto.id === productoId)
@@ -206,6 +224,12 @@ export default function VentasPage() {
           : i
       )
     )
+  }
+
+  function eliminarItemConAutorizacion(productoId: string) {
+    setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
+    setError(null)
+    setAuthEliminar(null)
   }
 
   function limpiarCarrito() {
@@ -672,6 +696,16 @@ export default function VentasPage() {
         </div>
       </div>
     )}
+
+      {/* Authorization modal for cart item removal */}
+      {authEliminar && (
+        <AutorizacionModal
+          accion="eliminar_item_carrito"
+          targetId={authEliminar.productoId}
+          onSuccess={(_token, _motivo) => eliminarItemConAutorizacion(authEliminar.productoId)}
+          onCancel={() => setAuthEliminar(null)}
+        />
+      )}
   </>
   )
 }

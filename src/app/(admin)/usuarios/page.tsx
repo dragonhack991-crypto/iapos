@@ -19,12 +19,22 @@ interface UsuarioForm {
   rolNombre: string
 }
 
+interface PermisosModal {
+  usuario: Usuario
+  overrides: string[]
+  todosPermisos: { nombre: string; descripcion: string | null }[]
+}
+
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [permisosModal, setPermisosModal] = useState<PermisosModal | null>(null)
+  const [permisosSeleccionados, setPermisosSeleccionados] = useState<Set<string>>(new Set())
+  const [savingPermisos, setSavingPermisos] = useState(false)
+  const [permisosError, setPermisosError] = useState<string | null>(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<UsuarioForm>({
     defaultValues: { rolNombre: 'Cajero' },
@@ -65,6 +75,48 @@ export default function UsuariosPage() {
       await cargarUsuarios()
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function abrirPermisosModal(usuario: Usuario) {
+    const res = await fetch(`/api/usuarios/${usuario.id}/permisos`)
+    if (!res.ok) return
+    const data = await res.json()
+    setPermisosModal({ usuario, overrides: data.overrides, todosPermisos: data.todosPermisos })
+    setPermisosSeleccionados(new Set(data.overrides))
+    setPermisosError(null)
+  }
+
+  function togglePermiso(nombre: string) {
+    setPermisosSeleccionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(nombre)) {
+        next.delete(nombre)
+      } else {
+        next.add(nombre)
+      }
+      return next
+    })
+  }
+
+  async function guardarPermisos() {
+    if (!permisosModal) return
+    setSavingPermisos(true)
+    setPermisosError(null)
+    try {
+      const res = await fetch(`/api/usuarios/${permisosModal.usuario.id}/permisos`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permisoNombres: Array.from(permisosSeleccionados) }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setPermisosError(data.error || 'Error al guardar permisos')
+        return
+      }
+      setPermisosModal(null)
+    } finally {
+      setSavingPermisos(false)
     }
   }
 
@@ -155,12 +207,13 @@ export default function UsuariosPage() {
                 <th className="text-left px-6 py-3 font-semibold text-gray-600">Roles</th>
                 <th className="text-center px-6 py-3 font-semibold text-gray-600">Estado</th>
                 <th className="text-left px-6 py-3 font-semibold text-gray-600">Creado</th>
+                <th className="text-center px-6 py-3 font-semibold text-gray-600">Permisos extra</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {usuarios.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-gray-400">
+                  <td colSpan={6} className="text-center py-8 text-gray-400">
                     No hay usuarios registrados
                   </td>
                 </tr>
@@ -182,11 +235,69 @@ export default function UsuariosPage() {
                     <td className="px-6 py-3 text-gray-500">
                       {new Date(u.creadoEn).toLocaleDateString('es-MX')}
                     </td>
+                    <td className="px-6 py-3 text-center">
+                      <button
+                        onClick={() => abrirPermisosModal(u)}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium underline"
+                      >
+                        Gestionar
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Permission overrides modal */}
+      {permisosModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-bold text-gray-900">Permisos extra — {permisosModal.usuario.nombre}</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Selecciona permisos adicionales más allá de los que asigna su rol. Estos se suman (no reemplazan) los permisos del rol.
+              </p>
+            </div>
+            <div className="p-6 space-y-2 max-h-96 overflow-y-auto">
+              {permisosError && (
+                <div className="mb-3 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+                  {permisosError}
+                </div>
+              )}
+              {permisosModal.todosPermisos.map((p) => (
+                <label key={p.nombre} className="flex items-start gap-3 cursor-pointer hover:bg-gray-50 rounded-lg p-2">
+                  <input
+                    type="checkbox"
+                    checked={permisosSeleccionados.has(p.nombre)}
+                    onChange={() => togglePermiso(p.nombre)}
+                    className="mt-0.5 w-4 h-4 text-indigo-600 rounded"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{p.nombre}</p>
+                    {p.descripcion && <p className="text-xs text-gray-500">{p.descripcion}</p>}
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-2">
+              <button
+                onClick={() => setPermisosModal(null)}
+                className="flex-1 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={guardarPermisos}
+                disabled={savingPermisos}
+                className="flex-1 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 rounded-lg transition"
+              >
+                {savingPermisos ? 'Guardando...' : 'Guardar permisos'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

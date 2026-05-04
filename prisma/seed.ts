@@ -15,6 +15,9 @@ async function main() {
     { nombre: 'ver_reportes', descripcion: 'Ver reportes del sistema' },
     { nombre: 'administrar_productos', descripcion: 'Gestionar productos' },
     { nombre: 'administrar_configuracion', descripcion: 'Gestionar configuración del sistema' },
+    { nombre: 'eliminar_item_carrito', descripcion: 'Eliminar productos del carrito sin autorización' },
+    { nombre: 'autorizar_eliminacion_carrito', descripcion: 'Autorizar eliminación de productos del carrito' },
+    { nombre: 'autorizar_cancelacion_venta', descripcion: 'Autorizar cancelación de ventas' },
   ]
 
   for (const permiso of permisos) {

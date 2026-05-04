@@ -17,10 +17,15 @@ model Usuario {
   creadoEn     DateTime       @default(now())
   actualizadoEn DateTime      @updatedAt
   roles        UsuarioRol[]
+  permisosExtra UsuarioPermiso[]
   sesionesApertura SesionCaja[] @relation("UsuarioApertura")
   movimientos  MovimientoInventario[]
   ventas       Venta[]
   ventasCanceladas Venta[]    @relation("UsuarioCancelacion")
+  tokensSolicitados AutorizacionToken[] @relation("TokenSolicitante")
+  tokensAutorizados AutorizacionToken[] @relation("TokenAutorizador")
+  auditoriasSolicitadas AuditoriaAccion[] @relation("AuditoriaSolicitante")
+  auditoriasAutorizadas AuditoriaAccion[] @relation("AuditoriaAutorizador")
 
   @@map("usuarios")
 }
@@ -41,6 +46,7 @@ model Permiso {
   nombre      String       @unique
   descripcion String?
   roles       RolPermiso[]
+  usuarios    UsuarioPermiso[]
   creadoEn    DateTime     @default(now())
 
   @@map("permisos")
@@ -66,6 +72,50 @@ model RolPermiso {
 
   @@id([rolId, permisoId])
   @@map("rol_permisos")
+}
+
+model UsuarioPermiso {
+  usuarioId String
+  permisoId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  permiso   Permiso  @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+  asignadoEn DateTime @default(now())
+
+  @@id([usuarioId, permisoId])
+  @@map("usuario_permisos")
+}
+
+model AutorizacionToken {
+  id            String    @id @default(cuid())
+  token         String    @unique @default(cuid())
+  accion        String
+  targetId      String?
+  solicitanteId String
+  autorizadorId String
+  motivo        String
+  usadoEn       DateTime?
+  expiraEn      DateTime
+  creadoEn      DateTime  @default(now())
+  solicitante   Usuario   @relation("TokenSolicitante", fields: [solicitanteId], references: [id])
+  autorizador   Usuario   @relation("TokenAutorizador", fields: [autorizadorId], references: [id])
+
+  @@map("autorizacion_tokens")
+}
+
+model AuditoriaAccion {
+  id            String    @id @default(cuid())
+  accion        String
+  solicitanteId String
+  autorizadorId String?
+  targetId      String?
+  motivo        String
+  sucursalId    String?
+  cajaId        String?
+  creadoEn      DateTime  @default(now())
+  solicitante   Usuario   @relation("AuditoriaSolicitante", fields: [solicitanteId], references: [id])
+  autorizador   Usuario?  @relation("AuditoriaAutorizador", fields: [autorizadorId], references: [id])
+
+  @@map("auditoria_acciones")
 }
 
 model ConfiguracionSistema {
