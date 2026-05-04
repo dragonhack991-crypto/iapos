@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useRouter } from 'next/navigation'
 
 interface LoginForm {
   email: string
@@ -12,7 +11,6 @@ interface LoginForm {
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
 
   const {
     register,
@@ -34,8 +32,9 @@ export default function LoginPage() {
         setError(json.error || 'Error al iniciar sesión')
         return
       }
-      router.push('/dashboard')
-      router.refresh()
+      // Hard redirect ensures the session cookie is included in the first
+      // protected-page request on mobile browsers (BF-cache safe).
+      window.location.replace('/dashboard')
     } catch {
       setError('Error de conexión')
     } finally {

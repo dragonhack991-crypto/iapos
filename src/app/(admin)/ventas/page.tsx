@@ -99,8 +99,8 @@ export default function VentasPage() {
   const [ventaExitosa, setVentaExitosa] = useState<{ id: string; folio: number; cambio: number | null } | null>(null)
   const [granelModal, setGranelModal] = useState<GranelModal | null>(null)
 
-  // Authorization escalation for cart item removal
-  const [authEliminar, setAuthEliminar] = useState<{ productoId: string } | null>(null)
+  // Authorization escalation for cart item removal: store the full item for audit
+  const [authEliminar, setAuthEliminar] = useState<{ item: CarritoItem } | null>(null)
   // Cache of the current user's direct permission to remove cart items (loaded at mount)
   const [puedeEliminarItem, setPuedeEliminarItem] = useState<boolean | null>(null)
 
@@ -200,12 +200,28 @@ export default function VentasPage() {
 
   function actualizarCantidad(productoId: string, nuevaCantidad: number) {
     if (nuevaCantidad <= 0) {
+      const item = carrito.find((i) => i.producto.id === productoId)
+      if (!item) return
       // Removing an item: check cached permission loaded at mount time
       if (puedeEliminarItem) {
         setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
         setError(null)
+        // Fire-and-forget audit for self-authorized removal
+        fetch('/api/auditoria/eliminar-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productoId: item.producto.id,
+            sku: item.producto.codigoBarras ?? null,
+            nombre: item.producto.nombre,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario,
+            subtotal: item.subtotal,
+            sesionCajaId: sesionCaja?.id ?? null,
+          }),
+        }).catch(() => {/* best-effort */})
       } else {
-        setAuthEliminar({ productoId })
+        setAuthEliminar({ item })
       }
       return
     }
@@ -702,8 +718,17 @@ export default function VentasPage() {
       {authEliminar && (
         <AutorizacionModal
           accion="eliminar_item_carrito"
-          targetId={authEliminar.productoId}
-          onSuccess={(_token, _motivo) => eliminarItemConAutorizacion(authEliminar.productoId)}
+          targetId={authEliminar.item.producto.id}
+          detalleItem={{
+            productoId: authEliminar.item.producto.id,
+            sku: authEliminar.item.producto.codigoBarras ?? null,
+            nombre: authEliminar.item.producto.nombre,
+            cantidad: authEliminar.item.cantidad,
+            precioUnitario: authEliminar.item.precioUnitario,
+            subtotal: authEliminar.item.subtotal,
+            sesionCajaId: sesionCaja?.id ?? null,
+          }}
+          onSuccess={() => eliminarItemConAutorizacion(authEliminar.item.producto.id)}
           onCancel={() => setAuthEliminar(null)}
         />
       )}

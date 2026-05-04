@@ -4,9 +4,24 @@ import { useState } from 'react'
 
 export type AccionAutorizacion = 'cancelar_venta' | 'eliminar_item_carrito'
 
+interface DetalleItem {
+  productoId: string
+  sku?: string | null
+  nombre: string
+  cantidad: number
+  precioUnitario: number
+  subtotal: number
+  sesionCajaId?: string | null
+}
+
 interface AutorizacionModalProps {
   accion: AccionAutorizacion
   targetId?: string
+  /** Item detail passed to the server for eliminar_item_carrito audit records */
+  detalleItem?: DetalleItem
+  /** Called after successful authorization.
+   *  For cancelar_venta: receives the single-use token and motivo.
+   *  For eliminar_item_carrito: the authorization is consumed server-side; receives no token. */
   onSuccess: (token: string, motivo: string) => void
   onCancel: () => void
 }
@@ -19,6 +34,7 @@ const ACCION_LABELS: Record<AccionAutorizacion, string> = {
 export default function AutorizacionModal({
   accion,
   targetId,
+  detalleItem,
   onSuccess,
   onCancel,
 }: AutorizacionModalProps) {
@@ -40,14 +56,23 @@ export default function AutorizacionModal({
       const res = await fetch('/api/autorizaciones/validar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, accion, targetId, motivo: motivo.trim() }),
+        body: JSON.stringify({
+          email,
+          password,
+          accion,
+          targetId,
+          motivo: motivo.trim(),
+          detalleItem: detalleItem ?? undefined,
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'Error al validar autorización')
         return
       }
-      onSuccess(data.token, motivo.trim())
+      // For eliminar_item_carrito the server consumed the authorization inline;
+      // no token is returned. Pass empty string so callers don't need to branch.
+      onSuccess(data.token ?? '', motivo.trim())
     } finally {
       setLoading(false)
     }

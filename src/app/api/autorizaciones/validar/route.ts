@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { obtenerSesion, obtenerPermisos } from '@/lib/auth'
+
+const itemDetalleSchema = z.object({
+  productoId: z.string(),
+  sku: z.string().optional().nullable(),
+  nombre: z.string(),
+  cantidad: z.number().positive(),
+  precioUnitario: z.number().nonnegative(),
+  subtotal: z.number().nonnegative(),
+  sesionCajaId: z.string().optional().nullable(),
+})
 
 const validarSchema = z.object({
   email: z.string().email(),
@@ -10,6 +21,8 @@ const validarSchema = z.object({
   accion: z.enum(['cancelar_venta', 'eliminar_item_carrito']),
   targetId: z.string().optional(),
   motivo: z.string().min(1, 'El motivo es requerido'),
+  // Optional item detail — required when accion === 'eliminar_item_carrito'
+  detalleItem: itemDetalleSchema.optional(),
 })
 
 // Maps each sensitive action to the permission required to authorize it
@@ -64,7 +77,54 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Create a single-use, short-lived token (5 minutes)
+  // ── eliminar_item_carrito — inline authorization ───────────────────────────
+  //
+  // The cart is client-side only; there is no server-side "consume token"
+  // endpoint for this action. We therefore consume the authorization
+  // immediately here: create a single-use token (for audit completeness),
+  // mark it used, and write the AuditoriaAccion — all in one transaction.
+  //
+  // cancelar_venta keeps the traditional two-step flow (create token →
+  // submit to /api/ventas/[id]/cancelar) because a persisted resource
+  // (the sale) must be updated atomically with the audit entry.
+  if (data.accion === 'eliminar_item_carrito') {
+    const expiraEn = new Date(Date.now() + 5 * 60 * 1000)
+    const usadoEn = new Date()
+
+    await prisma.$transaction(async (tx) => {
+      // Create and immediately mark the token as used
+      const authToken = await tx.autorizacionToken.create({
+        data: {
+          accion: data.accion,
+          targetId: data.targetId,
+          solicitanteId: sesion.sub,
+          autorizadorId: autorizador.id,
+          motivo: data.motivo,
+          expiraEn,
+          usadoEn,
+        },
+      })
+
+      // Write audit entry with item detail
+      await tx.auditoriaAccion.create({
+        data: {
+          accion: 'eliminar_item_carrito',
+          solicitanteId: sesion.sub,
+          autorizadorId: autorizador.id,
+          targetId: authToken.id,
+          motivo: data.motivo,
+          detalle: data.detalleItem ? (data.detalleItem as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        },
+      })
+    })
+
+    return NextResponse.json({
+      ok: true,
+      autorizador: { nombre: autorizador.nombre },
+    })
+  }
+
+  // ── cancelar_venta — classic two-step: create token, consume at cancelar ──
   const expiraEn = new Date(Date.now() + 5 * 60 * 1000)
   const authToken = await prisma.autorizacionToken.create({
     data: {

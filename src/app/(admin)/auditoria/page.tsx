@@ -15,6 +15,15 @@ interface AuditoriaEvento {
   motivo: string
   sucursalId: string | null
   cajaId: string | null
+  detalle: {
+    productoId?: string
+    sku?: string | null
+    nombre?: string
+    cantidad?: number
+    precioUnitario?: number
+    subtotal?: number
+    sesionCajaId?: string | null
+  } | null
   creadoEn: string
   solicitante: UsuarioRef
   autorizador: UsuarioRef | null
@@ -182,6 +191,7 @@ export default function AuditoriaPage() {
                     <th className="text-left px-4 py-3 font-semibold text-gray-600">Solicitante</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-600">Autorizador</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-600">Motivo</th>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-600">Detalle ítem</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-600">Referencia</th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-600">Sucursal / Caja</th>
                   </tr>
@@ -189,7 +199,7 @@ export default function AuditoriaPage() {
                 <tbody className="divide-y divide-gray-100">
                   {eventos.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-12 text-gray-400">
+                      <td colSpan={8} className="text-center py-12 text-gray-400">
                         No hay eventos de auditoría registrados
                       </td>
                     </tr>
@@ -231,6 +241,25 @@ export default function AuditoriaPage() {
                         </td>
                         <td className="px-4 py-3 text-gray-700 max-w-xs">
                           <p className="truncate" title={ev.motivo}>{ev.motivo}</p>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600 min-w-[140px]">
+                          {ev.detalle && ev.detalle.nombre ? (
+                            <div className="space-y-0.5">
+                              <p className="font-medium text-gray-800 truncate" title={ev.detalle.nombre}>
+                                {ev.detalle.nombre}
+                              </p>
+                              {ev.detalle.sku && (
+                                <p className="text-gray-400 font-mono">SKU: {ev.detalle.sku}</p>
+                              )}
+                              <p>
+                                {ev.detalle.cantidad} × ${typeof ev.detalle.precioUnitario === 'number' ? ev.detalle.precioUnitario.toFixed(2) : ev.detalle.precioUnitario}
+                                {' = '}
+                                <span className="font-semibold">${typeof ev.detalle.subtotal === 'number' ? ev.detalle.subtotal.toFixed(2) : ev.detalle.subtotal}</span>
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-500 font-mono text-xs">
                           {ev.targetId ? (
