@@ -5,6 +5,7 @@ import { obtenerSesion } from '@/lib/auth'
 
 const cancelarSchema = z.object({
   motivo: z.string().min(1, 'El motivo de cancelación es requerido'),
+  authToken: z.string().optional(),
 })
 
 export async function POST(
@@ -13,10 +14,6 @@ export async function POST(
 ) {
   const sesion = await obtenerSesion()
   if (!sesion) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-
-  if (!sesion.permisos.includes('vender') && !sesion.permisos.includes('ver_reportes')) {
-    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
-  }
 
   let body: unknown
   try {
@@ -37,10 +34,64 @@ export async function POST(
 
   const params = await context.params
 
+  // Check if the acting user has direct cancel permission
+  const tienePermisoDirecto = sesion.permisos.includes('cancelar_venta')
+
+  let autorizadorId: string | undefined
+  let motivo = data.motivo
+
+  if (!tienePermisoDirecto) {
+    // Require a valid authorization token
+    if (!data.authToken) {
+      return NextResponse.json(
+        { error: 'Se requiere autorización', codigo: 'REQUIERE_AUTORIZACION' },
+        { status: 403 }
+      )
+    }
+
+    const authToken = await prisma.autorizacionToken.findUnique({
+      where: { token: data.authToken },
+    })
+
+    if (!authToken) {
+      return NextResponse.json({ error: 'Token de autorización inválido' }, { status: 403 })
+    }
+
+    if (authToken.usadoEn) {
+      return NextResponse.json({ error: 'El token de autorización ya fue utilizado' }, { status: 403 })
+    }
+
+    if (authToken.expiraEn < new Date()) {
+      return NextResponse.json({ error: 'El token de autorización ha expirado' }, { status: 403 })
+    }
+
+    if (authToken.accion !== 'cancelar_venta') {
+      return NextResponse.json({ error: 'Token no válido para esta acción' }, { status: 403 })
+    }
+
+    if (authToken.targetId && authToken.targetId !== params.id) {
+      return NextResponse.json({ error: 'Token no válido para esta venta' }, { status: 403 })
+    }
+
+    if (authToken.solicitanteId !== sesion.sub) {
+      return NextResponse.json({ error: 'Token no válido para este usuario' }, { status: 403 })
+    }
+
+    // Mark token as used immediately
+    await prisma.autorizacionToken.update({
+      where: { id: authToken.id },
+      data: { usadoEn: new Date() },
+    })
+
+    autorizadorId = authToken.autorizadorId
+    motivo = authToken.motivo
+  }
+
   const venta = await prisma.venta.findUnique({
     where: { id: params.id },
     include: {
       detalles: true,
+      sesionCaja: { include: { caja: true } },
     },
   })
 
@@ -55,6 +106,9 @@ export async function POST(
     )
   }
 
+  const sucursalId = venta.sesionCaja?.caja?.sucursalId ?? undefined
+  const cajaId = venta.sesionCaja?.cajaId ?? undefined
+
   try {
     const ventaCancelada = await prisma.$transaction(async (tx) => {
       // Mark venta as cancelled with metadata
@@ -64,7 +118,7 @@ export async function POST(
           estado: 'CANCELADA',
           canceladoEn: new Date(),
           canceladoPorId: sesion.sub,
-          motivoCancelacion: data.motivo,
+          motivoCancelacion: motivo,
         },
         include: {
           detalles: { include: { producto: { select: { id: true, nombre: true } } } },
@@ -91,12 +145,25 @@ export async function POST(
             productoId: detalle.productoId,
             tipo: 'ENTRADA',
             cantidad: detalle.cantidad,
-            motivo: `Cancelación venta folio #${venta.folio} — ${data.motivo}`,
+            motivo: `Cancelación venta folio #${venta.folio} — ${motivo}`,
             usuarioId: sesion.sub,
             ventaId: venta.id,
           },
         })
       }
+
+      // Authorization audit log
+      await tx.auditoriaAccion.create({
+        data: {
+          accion: 'cancelar_venta',
+          solicitanteId: sesion.sub,
+          autorizadorId: autorizadorId ?? null,
+          targetId: venta.id,
+          motivo,
+          sucursalId: sucursalId ?? null,
+          cajaId: cajaId ?? null,
+        },
+      })
 
       return updated
     })

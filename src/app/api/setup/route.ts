@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
         'ver_dashboard', 'vender', 'cancelar_venta', 'abrir_caja', 'cerrar_caja',
         'administrar_usuarios', 'administrar_inventario', 'ver_reportes',
         'administrar_productos', 'administrar_configuracion',
+        'eliminar_item_carrito', 'autorizar_eliminacion_carrito', 'autorizar_cancelacion_venta',
       ]
       for (const nombre of permisos) {
         await tx.permiso.upsert({
