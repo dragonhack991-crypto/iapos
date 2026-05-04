@@ -226,7 +226,7 @@ export default function VentasPage() {
     )
   }
 
-  function eliminarItemConAuth(productoId: string) {
+  function eliminarItemConAutorizacion(productoId: string) {
     setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
     setError(null)
     setAuthEliminar(null)
@@ -702,7 +702,7 @@ export default function VentasPage() {
         <AutorizacionModal
           accion="eliminar_item_carrito"
           targetId={authEliminar.productoId}
-          onSuccess={(_token, _motivo) => eliminarItemConAuth(authEliminar.productoId)}
+          onSuccess={(_token, _motivo) => eliminarItemConAutorizacion(authEliminar.productoId)}
           onCancel={() => setAuthEliminar(null)}
         />
       )}
