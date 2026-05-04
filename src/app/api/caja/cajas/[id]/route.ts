@@ -50,6 +50,21 @@ export async function PATCH(
     if (!usuario || !usuario.activo) {
       return NextResponse.json({ error: 'Usuario asignado no encontrado o inactivo' }, { status: 404 })
     }
+
+    // Enforce unique assignment: one active caja per user (excluding this caja itself)
+    const cajaExistente = await prisma.caja.findFirst({
+      where: {
+        usuarioAsignadoId: data.usuarioAsignadoId,
+        activo: true,
+        NOT: { id: params.id },
+      },
+    })
+    if (cajaExistente) {
+      return NextResponse.json(
+        { error: `El usuario ya tiene la caja "${cajaExistente.nombre}" asignada. Un usuario solo puede tener una caja.` },
+        { status: 409 }
+      )
+    }
   }
 
   try {
