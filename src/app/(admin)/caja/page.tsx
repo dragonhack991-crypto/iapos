@@ -250,7 +250,7 @@ export default function CajaPage() {
 
           {cajasLibres.length === 0 && cajas.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm mb-4">
-              No hay cajas disponibles. Todas tienen sesiones abiertas por otros usuarios.
+              No hay cajas disponibles. Pueden estar en uso o asignadas a otros usuarios.
             </div>
           )}
 
