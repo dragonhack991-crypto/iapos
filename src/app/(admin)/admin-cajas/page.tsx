@@ -84,6 +84,10 @@ export default function AdminCajasPage() {
       setError('Selecciona una sucursal')
       return
     }
+    if (!nuevaUsuarioId) {
+      setError('Selecciona un usuario para asignar la caja')
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
@@ -209,14 +213,14 @@ export default function AdminCajasPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
-                Asignar a usuario <span className="text-gray-400">(opcional)</span>
+                Asignar a usuario <span className="text-red-500">*</span>
               </label>
               <select
                 value={nuevaUsuarioId}
                 onChange={(e) => setNuevaUsuarioId(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="">— Sin asignación —</option>
+                <option value="">— Selecciona un usuario —</option>
                 {usuarios.map((u) => (
                   <option key={u.id} value={u.id}>{u.nombre} ({u.email})</option>
                 ))}

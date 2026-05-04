@@ -48,7 +48,7 @@ export default function CajaPage() {
   const cargarDatos = useCallback(async () => {
     try {
       const [resCajas, resSesion] = await Promise.all([
-        fetch('/api/caja/cajas'),
+        fetch('/api/caja/cajas?misCajas=true'),
         fetch('/api/caja/sesion'),
       ])
       if (resCajas.ok) {
@@ -105,7 +105,7 @@ export default function CajaPage() {
       setMontoInicial('')
       setEfectivoEsperado(parseFloat(montoInicial))
       // Refresh caja list to update sesionAbierta status
-      const resCajas = await fetch('/api/caja/cajas')
+      const resCajas = await fetch('/api/caja/cajas?misCajas=true')
       if (resCajas.ok) {
         const dc = await resCajas.json()
         setCajas(dc.cajas || [])
@@ -140,7 +140,7 @@ export default function CajaPage() {
       setEfectivoEsperado(null)
       if (data.resumen) setCorteZ(data.resumen)
       // Refresh caja list so freed caja becomes selectable again
-      const resCajas = await fetch('/api/caja/cajas')
+      const resCajas = await fetch('/api/caja/cajas?misCajas=true')
       if (resCajas.ok) {
         const dc = await resCajas.json()
         setCajas(dc.cajas || [])

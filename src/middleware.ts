@@ -59,7 +59,11 @@ export async function middleware(request: NextRequest) {
 
   if (!cookiePresent) {
     try {
-      const statusUrl = new URL(RUTA_STATUS, request.url)
+      // Always probe via 127.0.0.1:PORT (the local process) instead of the
+      // inbound request URL (which may be a LAN IP unreachable from inside
+      // the Docker container).
+      const port = process.env.PORT || '3000'
+      const statusUrl = `http://127.0.0.1:${port}${RUTA_STATUS}`
       const res = await fetch(statusUrl, { cache: 'no-store' })
       if (res.ok) {
         const data = (await res.json()) as { initialized: boolean }
