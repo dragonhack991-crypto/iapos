@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useSearchParams } from 'next/navigation'
 
 interface LoginForm {
   email: string
@@ -12,9 +11,14 @@ interface LoginForm {
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const searchParams = useSearchParams()
-  const locked = searchParams.get('locked') === '1'
-  const timeout = searchParams.get('reason') === 'timeout'
+  const [locked, setLocked] = useState(false)
+  const [timeout, setTimeoutFlag] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setLocked(params.get('locked') === '1')
+    setTimeoutFlag(params.get('reason') === 'timeout')
+  }, [])
 
   const {
     register,
