@@ -11,6 +11,7 @@ type RequestLike = {
 /**
  * Resolve the client-facing protocol from request metadata.
  * Honors proxy forwarding headers before falling back to request URL.
+ * Forwarding headers must come from trusted reverse proxies only.
  * Returns null when protocol cannot be derived from request data; callers
  * should then apply their own fallback policy (env/default).
  */

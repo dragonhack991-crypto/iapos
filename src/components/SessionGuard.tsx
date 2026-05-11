@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { LOGOUT_REASON } from '@/lib/session'
 
 interface SessionGuardProps {
   timeoutMinutes?: number
@@ -17,11 +18,11 @@ export default function SessionGuard({ timeoutMinutes = 60 }: SessionGuardProps)
         await fetch('/api/auth/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: 'timeout' }),
+          body: JSON.stringify({ reason: LOGOUT_REASON.TIMEOUT }),
           keepalive: true,
         })
       } finally {
-        window.location.replace('/login?reason=timeout')
+        window.location.replace(`/login?reason=${LOGOUT_REASON.TIMEOUT}`)
       }
     }
 

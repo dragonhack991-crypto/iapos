@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { LOGOUT_REASON } from '@/lib/session'
 
 interface LoginForm {
   email: string
@@ -15,7 +16,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    setTimeoutFlag(params.get('reason') === 'timeout')
+    setTimeoutFlag(params.get('reason') === LOGOUT_REASON.TIMEOUT)
   }, [])
 
   const {

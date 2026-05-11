@@ -7,6 +7,7 @@ import {
   getSessionTtlSeconds,
 } from './lib/auth'
 import { getCookieDomain, isCookieSecure } from './lib/cookies'
+import { LOGOUT_REASON } from './lib/session'
 
 const INITIALIZED_COOKIE = 'iapos_initialized'
 
@@ -28,6 +29,8 @@ const RUTAS_ESTATICAS = ['/_next', '/favicon']
  * subsequent requests take the fast cookie path and skip the DB probe.
  */
 function attachInitCookie(response: NextResponse, request: NextRequest): void {
+  // Request context is required here so secure flag follows real client protocol
+  // (HTTP/HTTPS and reverse-proxy forwarded proto), not static env assumptions.
   const cookieDomain = getCookieDomain()
   response.cookies.set(INITIALIZED_COOKIE, '1', {
     httpOnly: true,
@@ -151,7 +154,9 @@ export async function middleware(request: NextRequest) {
   const lastActivity = lastActivityRaw ? Number.parseInt(lastActivityRaw, 10) : NaN
   const isTimedOut = Number.isFinite(lastActivity) && now - lastActivity > idleTimeoutMs
   if (isTimedOut) {
-    const response = NextResponse.redirect(new URL('/login?reason=timeout', request.url))
+    const response = NextResponse.redirect(
+      new URL(`/login?reason=${LOGOUT_REASON.TIMEOUT}`, request.url)
+    )
     response.cookies.set(COOKIE_NAME, '', {
       httpOnly: true,
       secure,

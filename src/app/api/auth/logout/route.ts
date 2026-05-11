@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { COOKIE_NAME, SESSION_ACTIVITY_COOKIE, obtenerSesion } from '@/lib/auth'
 import { getCookieDomain, isCookieSecure } from '@/lib/cookies'
 import { prisma } from '@/lib/prisma'
+import { LOGOUT_REASON, type LogoutReason } from '@/lib/session'
 
 export async function POST(request: NextRequest) {
-  let reason: 'manual' | 'timeout' | 'expiration' = 'manual'
+  let reason: LogoutReason = LOGOUT_REASON.MANUAL
   try {
     const body = (await request.json()) as { reason?: string }
-    if (body.reason === 'timeout' || body.reason === 'expiration' || body.reason === 'manual') {
+    if (
+      body.reason === LOGOUT_REASON.TIMEOUT ||
+      body.reason === LOGOUT_REASON.EXPIRATION ||
+      body.reason === LOGOUT_REASON.MANUAL
+    ) {
       reason = body.reason
     }
   } catch {
@@ -24,16 +29,16 @@ export async function POST(request: NextRequest) {
       await prisma.auditoriaAccion.create({
         data: {
           accion:
-            reason === 'timeout'
+            reason === LOGOUT_REASON.TIMEOUT
               ? 'logout_timeout'
-              : reason === 'expiration'
+              : reason === LOGOUT_REASON.EXPIRATION
                 ? 'logout_expiracion'
                 : 'logout_manual',
           solicitanteId: sesion.sub,
           motivo:
-            reason === 'timeout'
+            reason === LOGOUT_REASON.TIMEOUT
               ? 'Cierre automático por inactividad'
-              : reason === 'expiration'
+              : reason === LOGOUT_REASON.EXPIRATION
                 ? 'Sesión expirada'
                 : 'Cierre de sesión manual',
         },
