@@ -37,6 +37,7 @@ export function getSessionIdleTimeoutMinutes(): number {
 }
 
 export async function crearToken(payload: JWTPayload): Promise<string> {
+  // Keep JWT expiry synchronized with cookie maxAge (getSessionTtlSeconds()).
   const ttlMinutes = getSessionTtlMinutes()
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })

@@ -11,6 +11,8 @@ type RequestLike = {
 /**
  * Resolve the client-facing protocol from request metadata.
  * Honors proxy forwarding headers before falling back to request URL.
+ * Returns null when protocol cannot be derived from request data; callers
+ * should then apply their own fallback policy (env/default).
  */
 export function getRequestProtocol(request?: RequestLike): 'http' | 'https' | null {
   if (!request) return null

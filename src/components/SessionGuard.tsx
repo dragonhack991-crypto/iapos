@@ -7,7 +7,7 @@ interface SessionGuardProps {
 }
 
 export default function SessionGuard({ timeoutMinutes = 60 }: SessionGuardProps) {
-  const timeoutRef = useRef<number | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const timeoutMs = timeoutMinutes * 60 * 1000
@@ -26,8 +26,8 @@ export default function SessionGuard({ timeoutMinutes = 60 }: SessionGuardProps)
     }
 
     function resetTimer() {
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
-      timeoutRef.current = window.setTimeout(() => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      timeoutRef.current = setTimeout(() => {
         void handleTimeout()
       }, timeoutMs)
     }
@@ -46,7 +46,7 @@ export default function SessionGuard({ timeoutMinutes = 60 }: SessionGuardProps)
     resetTimer()
 
     return () => {
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
       for (const eventName of events) {
         window.removeEventListener(eventName, resetTimer)
       }

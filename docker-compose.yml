@@ -32,8 +32,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      # Cookie secure policy is request-aware (X-Forwarded-Proto / URL protocol).
-      # Set COOKIE_SECURE only to force an override in special deployments.
+      # Preferred default: dynamic secure policy (X-Forwarded-Proto / URL protocol).
+      # Use COOKIE_SECURE only as an explicit override for special deployments.
       # COOKIE_SECURE: "false"
     ports:
       - "3000:3000"
