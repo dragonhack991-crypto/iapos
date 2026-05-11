@@ -1,11 +1,13 @@
 'use client'
 
+import { LOGOUT_REASON } from '@/lib/session'
+
 export default function LogoutButton() {
   async function handleLogout() {
     await fetch('/api/auth/logout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: 'manual' }),
+      body: JSON.stringify({ reason: LOGOUT_REASON.MANUAL }),
     })
     // Hard redirect clears all React state and ensures the new (expired) cookie
     // is sent on the next request — critical on mobile browsers with BF-cache.
