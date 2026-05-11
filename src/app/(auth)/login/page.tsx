@@ -11,12 +11,10 @@ interface LoginForm {
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [locked, setLocked] = useState(false)
   const [timeout, setTimeoutFlag] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    setLocked(params.get('locked') === '1')
     setTimeoutFlag(params.get('reason') === 'timeout')
   }, [])
 
@@ -60,11 +58,9 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            {(locked || timeout) && (
+            {timeout && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
-                {locked
-                  ? 'Pantalla bloqueada. Reingresa tus credenciales para continuar.'
-                  : 'Tu sesión se cerró por inactividad. Inicia sesión nuevamente.'}
+                Tu sesión se cerró por inactividad. Inicia sesión nuevamente.
               </div>
             )}
             <div>

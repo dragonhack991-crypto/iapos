@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { COOKIE_NAME, LOCK_COOKIE, SESSION_ACTIVITY_COOKIE, obtenerSesion } from '@/lib/auth'
+import { COOKIE_NAME, SESSION_ACTIVITY_COOKIE, obtenerSesion } from '@/lib/auth'
 import { getCookieDomain, isCookieSecure } from '@/lib/cookies'
 import { prisma } from '@/lib/prisma'
 
@@ -53,14 +53,6 @@ export async function POST(request: NextRequest) {
     domain: cookieDomain,
   })
   response.cookies.set(SESSION_ACTIVITY_COOKIE, '', {
-    httpOnly: true,
-    secure,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-    domain: cookieDomain,
-  })
-  response.cookies.set(LOCK_COOKIE, '', {
     httpOnly: true,
     secure,
     sameSite: 'lax',

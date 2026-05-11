@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   verificarToken,
   COOKIE_NAME,
-  LOCK_COOKIE,
   SESSION_ACTIVITY_COOKIE,
   getSessionIdleTimeoutMinutes,
   getSessionTtlSeconds,
@@ -19,7 +18,7 @@ const RUTA_STATUS = '/api/system/status'
 const RUTAS_SETUP = ['/setup', '/api/setup']
 
 // Routes that are always public once the system is initialized
-const RUTAS_AUTH_PUBLICA = ['/login', '/api/auth/login', '/api/auth/logout', '/api/auth/lock']
+const RUTAS_AUTH_PUBLICA = ['/login', '/api/auth/login', '/api/auth/logout']
 
 // Static asset prefixes – always pass through
 const RUTAS_ESTATICAS = ['/_next', '/favicon']
@@ -139,14 +138,6 @@ export async function middleware(request: NextRequest) {
       maxAge: 0,
       domain: cookieDomain,
     })
-    response.cookies.set(LOCK_COOKIE, '', {
-      httpOnly: true,
-      secure: isCookieSecure(request),
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 0,
-      domain: cookieDomain,
-    })
     return response
   }
 
@@ -155,20 +146,6 @@ export async function middleware(request: NextRequest) {
   const sessionMaxAge = getSessionTtlSeconds()
   const idleTimeoutMs = getSessionIdleTimeoutMinutes() * 60 * 1000
   const now = Date.now()
-
-  const locked = request.cookies.get(LOCK_COOKIE)?.value === '1'
-  if (locked) {
-    const response = NextResponse.redirect(new URL('/login?locked=1', request.url))
-    response.cookies.set(LOCK_COOKIE, '1', {
-      httpOnly: true,
-      secure,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: sessionMaxAge,
-      domain: cookieDomain,
-    })
-    return response
-  }
 
   const lastActivityRaw = request.cookies.get(SESSION_ACTIVITY_COOKIE)?.value
   const lastActivity = lastActivityRaw ? Number.parseInt(lastActivityRaw, 10) : NaN

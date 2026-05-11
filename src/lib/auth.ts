@@ -9,7 +9,6 @@ function getJWTSecret(): Uint8Array {
 
 const COOKIE_NAME = 'iapos_session'
 const SESSION_ACTIVITY_COOKIE = 'iapos_session_last_activity'
-const LOCK_COOKIE = 'iapos_screen_locked'
 
 export interface JWTPayload {
   sub: string
@@ -95,4 +94,4 @@ export async function obtenerPermisos(usuarioId: string): Promise<string[]> {
   return Array.from(permisos)
 }
 
-export { COOKIE_NAME, SESSION_ACTIVITY_COOKIE, LOCK_COOKIE }
+export { COOKIE_NAME, SESSION_ACTIVITY_COOKIE }

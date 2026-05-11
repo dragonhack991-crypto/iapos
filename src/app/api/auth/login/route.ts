@@ -7,7 +7,6 @@ import {
   obtenerPermisos,
   COOKIE_NAME,
   SESSION_ACTIVITY_COOKIE,
-  LOCK_COOKIE,
   getSessionTtlSeconds,
 } from '@/lib/auth'
 import { getCookieDomain, isCookieSecure } from '@/lib/cookies'
@@ -57,15 +56,6 @@ export async function POST(request: NextRequest) {
       secure,
       sameSite: 'lax',
       maxAge: sessionMaxAge,
-      path: '/',
-      domain: cookieDomain,
-    })
-    // Clear lock cookie on successful re-authentication.
-    response.cookies.set(LOCK_COOKIE, '', {
-      httpOnly: true,
-      secure,
-      sameSite: 'lax',
-      maxAge: 0,
       path: '/',
       domain: cookieDomain,
     })
