@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verificarToken, COOKIE_NAME } from './lib/auth'
-import { isCookieSecure } from './lib/cookies'
+import {
+  verificarToken,
+  COOKIE_NAME,
+  LOCK_COOKIE,
+  SESSION_ACTIVITY_COOKIE,
+  getSessionIdleTimeoutMinutes,
+  getSessionTtlSeconds,
+} from './lib/auth'
+import { getCookieDomain, isCookieSecure } from './lib/cookies'
 
 const INITIALIZED_COOKIE = 'iapos_initialized'
 
@@ -12,7 +19,7 @@ const RUTA_STATUS = '/api/system/status'
 const RUTAS_SETUP = ['/setup', '/api/setup']
 
 // Routes that are always public once the system is initialized
-const RUTAS_AUTH_PUBLICA = ['/login', '/api/auth/login', '/api/auth/logout']
+const RUTAS_AUTH_PUBLICA = ['/login', '/api/auth/login', '/api/auth/logout', '/api/auth/lock']
 
 // Static asset prefixes – always pass through
 const RUTAS_ESTATICAS = ['/_next', '/favicon']
@@ -21,13 +28,15 @@ const RUTAS_ESTATICAS = ['/_next', '/favicon']
  * Attach the iapos_initialized cookie to any outgoing response so that
  * subsequent requests take the fast cookie path and skip the DB probe.
  */
-function attachInitCookie(response: NextResponse): void {
+function attachInitCookie(response: NextResponse, request: NextRequest): void {
+  const cookieDomain = getCookieDomain()
   response.cookies.set(INITIALIZED_COOKIE, '1', {
     httpOnly: true,
-    secure: isCookieSecure(),
+    secure: isCookieSecure(request),
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 365, // 1 year
+    domain: cookieDomain,
   })
 }
 
@@ -90,14 +99,14 @@ export async function middleware(request: NextRequest) {
   // Block /setup; redirect to login
   if (RUTAS_SETUP.some(r => pathname.startsWith(r))) {
     const response = NextResponse.redirect(new URL('/login', request.url))
-    if (restoreCookie) attachInitCookie(response)
+    if (restoreCookie) attachInitCookie(response, request)
     return response
   }
 
   // Public auth routes – no token required
   if (RUTAS_AUTH_PUBLICA.some(r => pathname.startsWith(r))) {
     const response = NextResponse.next()
-    if (restoreCookie) attachInitCookie(response)
+    if (restoreCookie) attachInitCookie(response, request)
     return response
   }
 
@@ -105,20 +114,82 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value
   if (!token) {
     const response = NextResponse.redirect(new URL('/login', request.url))
-    if (restoreCookie) attachInitCookie(response)
+    if (restoreCookie) attachInitCookie(response, request)
     return response
   }
 
   const payload = await verificarToken(token)
   if (!payload) {
     // Clear the invalid/expired cookie and redirect to login
+    const cookieDomain = getCookieDomain()
     const response = NextResponse.redirect(new URL('/login', request.url))
     response.cookies.set(COOKIE_NAME, '', {
       httpOnly: true,
-      secure: isCookieSecure(),
+      secure: isCookieSecure(request),
       sameSite: 'lax',
       path: '/',
       maxAge: 0,
+      domain: cookieDomain,
+    })
+    response.cookies.set(SESSION_ACTIVITY_COOKIE, '', {
+      httpOnly: true,
+      secure: isCookieSecure(request),
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+      domain: cookieDomain,
+    })
+    response.cookies.set(LOCK_COOKIE, '', {
+      httpOnly: true,
+      secure: isCookieSecure(request),
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+      domain: cookieDomain,
+    })
+    return response
+  }
+
+  const cookieDomain = getCookieDomain()
+  const secure = isCookieSecure(request)
+  const sessionMaxAge = getSessionTtlSeconds()
+  const idleTimeoutMs = getSessionIdleTimeoutMinutes() * 60 * 1000
+  const now = Date.now()
+
+  const locked = request.cookies.get(LOCK_COOKIE)?.value === '1'
+  if (locked) {
+    const response = NextResponse.redirect(new URL('/login?locked=1', request.url))
+    response.cookies.set(LOCK_COOKIE, '1', {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: sessionMaxAge,
+      domain: cookieDomain,
+    })
+    return response
+  }
+
+  const lastActivityRaw = request.cookies.get(SESSION_ACTIVITY_COOKIE)?.value
+  const lastActivity = lastActivityRaw ? Number.parseInt(lastActivityRaw, 10) : NaN
+  const isTimedOut = Number.isFinite(lastActivity) && now - lastActivity > idleTimeoutMs
+  if (isTimedOut) {
+    const response = NextResponse.redirect(new URL('/login?reason=timeout', request.url))
+    response.cookies.set(COOKIE_NAME, '', {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+      domain: cookieDomain,
+    })
+    response.cookies.set(SESSION_ACTIVITY_COOKIE, '', {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+      domain: cookieDomain,
     })
     return response
   }
@@ -126,7 +197,15 @@ export async function middleware(request: NextRequest) {
   // Authenticated – prevent browsers from caching protected responses
   const response = NextResponse.next()
   response.headers.set('Cache-Control', 'no-store')
-  if (restoreCookie) attachInitCookie(response)
+  response.cookies.set(SESSION_ACTIVITY_COOKIE, String(now), {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: sessionMaxAge,
+    domain: cookieDomain,
+  })
+  if (restoreCookie) attachInitCookie(response, request)
   return response
 }
 

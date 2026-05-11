@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
-import { crearToken, obtenerPermisos, COOKIE_NAME } from '@/lib/auth'
-import { isCookieSecure } from '@/lib/cookies'
+import {
+  crearToken,
+  obtenerPermisos,
+  COOKIE_NAME,
+  SESSION_ACTIVITY_COOKIE,
+  LOCK_COOKIE,
+  getSessionTtlSeconds,
+} from '@/lib/auth'
+import { getCookieDomain, isCookieSecure } from '@/lib/cookies'
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -34,13 +41,33 @@ export async function POST(request: NextRequest) {
     })
 
     const response = NextResponse.json({ ok: true, nombre: usuario.nombre })
-    const secure = isCookieSecure()
+    const secure = isCookieSecure(request)
+    const cookieDomain = getCookieDomain()
+    const sessionMaxAge = getSessionTtlSeconds()
     response.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       secure,
       sameSite: 'lax',
-      maxAge: 60 * 60 * 8,
+      maxAge: sessionMaxAge,
       path: '/',
+      domain: cookieDomain,
+    })
+    response.cookies.set(SESSION_ACTIVITY_COOKIE, String(Date.now()), {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      maxAge: sessionMaxAge,
+      path: '/',
+      domain: cookieDomain,
+    })
+    // Clear lock cookie on successful re-authentication.
+    response.cookies.set(LOCK_COOKIE, '', {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/',
+      domain: cookieDomain,
     })
     // Re-establish the initialization flag so the middleware can confirm the
     // system is set up even after browser cookies have been cleared.
@@ -50,6 +77,7 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 365,
+      domain: cookieDomain,
     })
     return response
   } catch (e) {

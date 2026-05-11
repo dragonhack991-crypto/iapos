@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { obtenerSesion } from '@/lib/auth'
 import Link from 'next/link'
 import LogoutButton from '@/components/LogoutButton'
+import SessionGuard from '@/components/SessionGuard'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
       {/* Main content */}
       <main className="flex-1 overflow-auto">
+        <SessionGuard />
         {children}
       </main>
     </div>

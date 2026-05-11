@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { getCookieDomain, isCookieSecure } from '@/lib/cookies'
 
 const setupSchema = z.object({
   nombreNegocio: z
@@ -100,10 +101,11 @@ export async function POST(request: NextRequest) {
     // JWT session token and the DB guard above.
     response.cookies.set('iapos_initialized', '1', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isCookieSecure(request),
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 365, // 1 year
+      domain: getCookieDomain(),
     })
     return response
   } catch (e) {

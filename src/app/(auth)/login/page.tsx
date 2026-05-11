@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useSearchParams } from 'next/navigation'
 
 interface LoginForm {
   email: string
@@ -11,6 +12,9 @@ interface LoginForm {
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
+  const locked = searchParams.get('locked') === '1'
+  const timeout = searchParams.get('reason') === 'timeout'
 
   const {
     register,
@@ -52,6 +56,13 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+            {(locked || timeout) && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
+                {locked
+                  ? 'Pantalla bloqueada. Reingresa tus credenciales para continuar.'
+                  : 'Tu sesión se cerró por inactividad. Inicia sesión nuevamente.'}
+              </div>
+            )}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                 Correo electrónico

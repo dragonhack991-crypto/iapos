@@ -8,6 +8,8 @@ function getJWTSecret(): Uint8Array {
 }
 
 const COOKIE_NAME = 'iapos_session'
+const SESSION_ACTIVITY_COOKIE = 'iapos_session_last_activity'
+const LOCK_COOKIE = 'iapos_screen_locked'
 
 export interface JWTPayload {
   sub: string
@@ -16,11 +18,30 @@ export interface JWTPayload {
   permisos: string[]
 }
 
+function getSessionTtlMinutes(): number {
+  const raw = process.env.SESSION_TTL_MINUTES
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN
+  if (Number.isFinite(parsed) && parsed > 0) return parsed
+  return 60
+}
+
+export function getSessionTtlSeconds(): number {
+  return getSessionTtlMinutes() * 60
+}
+
+export function getSessionIdleTimeoutMinutes(): number {
+  const raw = process.env.SESSION_IDLE_TIMEOUT_MINUTES
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN
+  if (Number.isFinite(parsed) && parsed > 0) return parsed
+  return 60
+}
+
 export async function crearToken(payload: JWTPayload): Promise<string> {
+  const ttlMinutes = getSessionTtlMinutes()
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('8h')
+    .setExpirationTime(`${ttlMinutes}m`)
     .sign(getJWTSecret())
 }
 
@@ -73,4 +94,4 @@ export async function obtenerPermisos(usuarioId: string): Promise<string[]> {
   return Array.from(permisos)
 }
 
-export { COOKIE_NAME }
+export { COOKIE_NAME, SESSION_ACTIVITY_COOKIE, LOCK_COOKIE }
