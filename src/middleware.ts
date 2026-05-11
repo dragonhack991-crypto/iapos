@@ -77,7 +77,7 @@ export async function middleware(request: NextRequest) {
       if (res.ok) {
         const data = (await res.json()) as { initialized: boolean }
         isInitialized = data.initialized
-        if (data.initialized) restoreCookie = true
+        if (isInitialized) restoreCookie = true
       }
     } catch (err) {
       // Status probe failed (e.g. cold start, DB unreachable).
