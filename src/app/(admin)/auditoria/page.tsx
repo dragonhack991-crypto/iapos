@@ -8,6 +8,12 @@ interface UsuarioRef {
   email: string
 }
 
+interface UsuarioFiltro {
+  id: string
+  nombre: string
+  email: string
+}
+
 interface AuditoriaEvento {
   id: string
   accion: string
@@ -51,12 +57,14 @@ export default function AuditoriaPage() {
   const [pagination, setPagination] = useState<Pagination>({ total: 0, page: 1, perPage: 20, totalPages: 1 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [usuariosFiltro, setUsuariosFiltro] = useState<UsuarioFiltro[]>([])
 
   // Filters
   const [fechaInicio, setFechaInicio] = useState('')
   const [fechaFin, setFechaFin] = useState('')
   const [accion, setAccion] = useState('')
   const [sucursalId, setSucursalId] = useState('')
+  const [solicitanteId, setSolicitanteId] = useState('')
   const [page, setPage] = useState(1)
 
   const cargarEventos = useCallback(async (currentPage = 1) => {
@@ -70,6 +78,7 @@ export default function AuditoriaPage() {
       if (fechaFin) params.set('fechaFin', fechaFin)
       if (accion) params.set('accion', accion)
       if (sucursalId) params.set('sucursalId', sucursalId)
+      if (solicitanteId) params.set('solicitanteId', solicitanteId)
 
       const res = await fetch(`/api/auditoria?${params.toString()}`)
       if (!res.ok) {
@@ -83,11 +92,25 @@ export default function AuditoriaPage() {
     } finally {
       setLoading(false)
     }
-  }, [fechaInicio, fechaFin, accion, sucursalId])
+  }, [fechaInicio, fechaFin, accion, sucursalId, solicitanteId])
 
   useEffect(() => {
     cargarEventos(page)
   }, [cargarEventos, page])
+
+  // Load users for solicitante filter (admin-only endpoint — graceful fallback)
+  useEffect(() => {
+    fetch('/api/usuarios')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.usuarios) {
+          setUsuariosFiltro(
+            (d.usuarios as UsuarioFiltro[]).filter((u: UsuarioFiltro & { activo?: boolean }) => u.activo !== false)
+          )
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   function aplicarFiltros() {
     setPage(1)
@@ -99,6 +122,7 @@ export default function AuditoriaPage() {
     setFechaFin('')
     setAccion('')
     setSucursalId('')
+    setSolicitanteId('')
     setPage(1)
   }
 
@@ -113,7 +137,7 @@ export default function AuditoriaPage() {
 
       {/* Filters */}
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Fecha inicio</label>
             <input
@@ -143,6 +167,29 @@ export default function AuditoriaPage() {
               <option value="cancelar_venta">Cancelar venta</option>
               <option value="eliminar_item_carrito">Eliminar ítem carrito</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Usuario solicitante</label>
+            {usuariosFiltro.length > 0 ? (
+              <select
+                value={solicitanteId}
+                onChange={(e) => setSolicitanteId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Todos</option>
+                {usuariosFiltro.map((u) => (
+                  <option key={u.id} value={u.id}>{u.nombre}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={solicitanteId}
+                onChange={(e) => setSolicitanteId(e.target.value)}
+                placeholder="ID de usuario"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">ID Sucursal</label>
