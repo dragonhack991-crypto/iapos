@@ -4,6 +4,18 @@ import { getCookieDomain, isCookieSecure } from '@/lib/cookies'
 import { prisma } from '@/lib/prisma'
 import { LOGOUT_REASON, type LogoutReason } from '@/lib/session'
 
+function getLogoutAuditAction(reason: LogoutReason): string {
+  if (reason === LOGOUT_REASON.TIMEOUT) return 'logout_timeout'
+  if (reason === LOGOUT_REASON.EXPIRATION) return 'logout_expiracion'
+  return 'logout_manual'
+}
+
+function getLogoutAuditMotivo(reason: LogoutReason): string {
+  if (reason === LOGOUT_REASON.TIMEOUT) return 'Cierre automático por inactividad'
+  if (reason === LOGOUT_REASON.EXPIRATION) return 'Sesión expirada'
+  return 'Cierre de sesión manual'
+}
+
 export async function POST(request: NextRequest) {
   let reason: LogoutReason = LOGOUT_REASON.MANUAL
   try {
@@ -28,19 +40,9 @@ export async function POST(request: NextRequest) {
     try {
       await prisma.auditoriaAccion.create({
         data: {
-          accion:
-            reason === LOGOUT_REASON.TIMEOUT
-              ? 'logout_timeout'
-              : reason === LOGOUT_REASON.EXPIRATION
-                ? 'logout_expiracion'
-                : 'logout_manual',
+          accion: getLogoutAuditAction(reason),
           solicitanteId: sesion.sub,
-          motivo:
-            reason === LOGOUT_REASON.TIMEOUT
-              ? 'Cierre automático por inactividad'
-              : reason === LOGOUT_REASON.EXPIRATION
-                ? 'Sesión expirada'
-                : 'Cierre de sesión manual',
+          motivo: getLogoutAuditMotivo(reason),
         },
       })
     } catch (error) {

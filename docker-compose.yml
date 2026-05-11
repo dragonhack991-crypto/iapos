@@ -32,7 +32,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      # Preferred default: dynamic secure policy (X-Forwarded-Proto / URL protocol).
+      # Preferred default: dynamic secure policy (x-forwarded-proto / URL protocol).
       # Use COOKIE_SECURE only as an explicit override for special deployments.
       # Example: set COOKIE_SECURE: "true" if your proxy terminates TLS but does
       # not pass X-Forwarded-Proto and you must force secure cookies.

@@ -155,7 +155,7 @@ export async function middleware(request: NextRequest) {
   const isTimedOut = Number.isFinite(lastActivity) && now - lastActivity > idleTimeoutMs
   if (isTimedOut) {
     const response = NextResponse.redirect(
-      new URL(`/login?reason=${LOGOUT_REASON.TIMEOUT}`, request.url)
+      new URL(`/login?reason=${encodeURIComponent(LOGOUT_REASON.TIMEOUT)}`, request.url)
     )
     response.cookies.set(COOKIE_NAME, '', {
       httpOnly: true,

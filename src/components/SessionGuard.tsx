@@ -29,7 +29,9 @@ export default function SessionGuard({ timeoutMinutes = 60 }: SessionGuardProps)
     function resetTimer() {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
       timeoutRef.current = setTimeout(() => {
-        void handleTimeout()
+        handleTimeout().catch(() => {
+          window.location.replace(`/login?reason=${LOGOUT_REASON.TIMEOUT}`)
+        })
       }, timeoutMs)
     }
 

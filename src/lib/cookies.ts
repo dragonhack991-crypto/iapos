@@ -23,7 +23,7 @@ export function getRequestProtocol(request?: RequestLike): 'http' | 'https' | nu
     request.headers.get('x-forwarded-protocol')
 
   if (forwardedProtoRaw) {
-    const forwardedProto = forwardedProtoRaw.split(',')[0]?.trim().toLowerCase()
+    const forwardedProto = forwardedProtoRaw.split(',')[0].trim().toLowerCase()
     if (forwardedProto === 'https') return 'https'
     if (forwardedProto === 'http') return 'http'
   }
