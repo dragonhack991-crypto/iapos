@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     const secure = isCookieSecure()
     const response = NextResponse.json({ ok: true, nombre: usuario.nombre })
-    const secure = isCookieSecure()
+    //const secure = isCookieSecure()
     response.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       secure,
