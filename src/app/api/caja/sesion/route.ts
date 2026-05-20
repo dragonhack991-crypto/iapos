@@ -37,11 +37,26 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { cajaId, montoInicial } = abrirCajaSchema.parse(body)
 
+    // Verify the caja exists and is active
+    const caja = await prisma.caja.findUnique({ where: { id: cajaId } })
+    if (!caja || !caja.activo) {
+      return NextResponse.json({ error: 'Caja no encontrada o inactiva' }, { status: 404 })
+    }
+
+    // If the caja is assigned to a specific user, only that user may open it
+    if (caja.usuarioAsignadoId && caja.usuarioAsignadoId !== sesion.sub) {
+      return NextResponse.json(
+        { error: 'Esta caja está asignada a otro usuario' },
+        { status: 403 }
+      )
+    }
+
+    // Block only if there is a currently OPEN session for this caja
     const sesionAbierta = await prisma.sesionCaja.findFirst({
       where: { cajaId, estado: 'ABIERTA' },
     })
     if (sesionAbierta) {
-      return NextResponse.json({ error: 'Ya hay una sesión abierta para esta caja' }, { status: 400 })
+      return NextResponse.json({ error: 'Ya hay una sesión abierta para esta caja' }, { status: 409 })
     }
 
     const nuevaSesion = await prisma.sesionCaja.create({
@@ -64,3 +79,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }
+

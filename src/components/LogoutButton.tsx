@@ -1,14 +1,11 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-
 export default function LogoutButton() {
-  const router = useRouter()
-
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
-    router.replace('/login')
-    router.refresh()
+    // Hard redirect clears all React state and ensures the new (expired) cookie
+    // is sent on the next request — critical on mobile browsers with BF-cache.
+    window.location.replace('/login')
   }
 
   return (

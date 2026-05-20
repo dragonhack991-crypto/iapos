@@ -60,6 +60,16 @@ export async function obtenerPermisos(usuarioId: string): Promise<string[]> {
       permisos.add(rp.permiso.nombre)
     }
   }
+
+  // Additive per-user overrides
+  const extras = await prisma.usuarioPermiso.findMany({
+    where: { usuarioId },
+    include: { permiso: true },
+  })
+  for (const up of extras) {
+    permisos.add(up.permiso.nombre)
+  }
+
   return Array.from(permisos)
 }
 

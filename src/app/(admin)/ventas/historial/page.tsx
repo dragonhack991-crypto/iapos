@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import AutorizacionModal from '@/components/AutorizacionModal'
 
 interface VentaDetalle {
   id: string
@@ -80,6 +81,9 @@ export default function VentasHistorialPage() {
   const [cancelando, setCancelando] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
 
+  // Authorization escalation
+  const [authPendiente, setAuthPendiente] = useState<{ ventaId: string; motivo: string } | null>(null)
+
   const cargarVentas = useCallback(async (currentPage = 1) => {
     setLoading(true)
     setError(null)
@@ -124,21 +128,31 @@ export default function VentasHistorialPage() {
     setPage(1)
   }
 
-  async function cancelarVenta() {
-    if (!cancelModal || !motivoCancelacion.trim()) {
+  async function cancelarVenta(authToken?: string, motivoOverride?: string) {
+    if (!cancelModal) return
+    const motivo = motivoOverride ?? motivoCancelacion
+    if (!motivo.trim()) {
       setCancelError('El motivo de cancelación es requerido')
       return
     }
     setCancelando(true)
     setCancelError(null)
     try {
+      const body: Record<string, string> = { motivo: motivo.trim() }
+      if (authToken) body.authToken = authToken
+
       const res = await fetch(`/api/ventas/${cancelModal.id}/cancelar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ motivo: motivoCancelacion.trim() }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) {
+        if (data.codigo === 'REQUIERE_AUTORIZACION') {
+          // Escalate to authorization modal
+          setAuthPendiente({ ventaId: cancelModal.id, motivo: motivo.trim() })
+          return
+        }
         setCancelError(data.error || 'Error al cancelar la venta')
         return
       }
@@ -152,9 +166,20 @@ export default function VentasHistorialPage() {
       )
       setCancelModal(null)
       setMotivoCancelacion('')
+      setAuthPendiente(null)
     } finally {
       setCancelando(false)
     }
+  }
+
+  async function onAuthSuccess(token: string, motivo: string) {
+    setAuthPendiente(null)
+    await cancelarVenta(token, motivo)
+  }
+
+  function handleAuthCancel() {
+    setAuthPendiente(null)
+    setCancelError('Autorización cancelada')
   }
 
   return (
@@ -549,7 +574,7 @@ export default function VentasHistorialPage() {
                   Volver
                 </button>
                 <button
-                  onClick={cancelarVenta}
+                  onClick={() => cancelarVenta()}
                   disabled={cancelando || !motivoCancelacion.trim()}
                   className="flex-1 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:bg-red-300 rounded-lg transition"
                 >
@@ -559,6 +584,15 @@ export default function VentasHistorialPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Authorization escalation modal */}
+      {authPendiente && cancelModal && (
+        <AutorizacionModal
+          accion="cancelar_venta"
+          targetId={authPendiente.ventaId}
+          onSuccess={onAuthSuccess}
+          onCancel={handleAuthCancel}
+        />
       )}
     </div>
   )

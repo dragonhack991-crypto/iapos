@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import AutorizacionModal from '@/components/AutorizacionModal'
 
 interface Producto {
   id: string
@@ -98,11 +99,17 @@ export default function VentasPage() {
   const [ventaExitosa, setVentaExitosa] = useState<{ id: string; folio: number; cambio: number | null } | null>(null)
   const [granelModal, setGranelModal] = useState<GranelModal | null>(null)
 
+  // Authorization escalation for cart item removal: store the full item for audit
+  const [authEliminar, setAuthEliminar] = useState<{ item: CarritoItem } | null>(null)
+  // Cache of the current user's direct permission to remove cart items (loaded at mount)
+  const [puedeEliminarItem, setPuedeEliminarItem] = useState<boolean | null>(null)
+
   const cargarDatos = useCallback(async () => {
     try {
-      const [resProductos, resSesion] = await Promise.all([
+      const [resProductos, resSesion, resPermiso] = await Promise.all([
         fetch('/api/productos'),
         fetch('/api/caja/sesion'),
+        fetch('/api/autorizaciones/verificar-permiso?permiso=eliminar_item_carrito'),
       ])
       if (resProductos.ok) {
         const data = await resProductos.json()
@@ -111,6 +118,13 @@ export default function VentasPage() {
       if (resSesion.ok) {
         const data = await resSesion.json()
         setSesionCaja(data.sesion || null)
+      }
+      if (resPermiso.ok) {
+        const data = await resPermiso.json()
+        setPuedeEliminarItem(Boolean(data.tiene))
+      } else {
+        // On error, default to requiring authorization (more secure)
+        setPuedeEliminarItem(false)
       }
     } finally {
       setLoading(false)
@@ -186,8 +200,29 @@ export default function VentasPage() {
 
   function actualizarCantidad(productoId: string, nuevaCantidad: number) {
     if (nuevaCantidad <= 0) {
-      setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
-      setError(null)
+      const item = carrito.find((i) => i.producto.id === productoId)
+      if (!item) return
+      // Removing an item: check cached permission loaded at mount time
+      if (puedeEliminarItem) {
+        setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
+        setError(null)
+        // Fire-and-forget audit for self-authorized removal
+        fetch('/api/auditoria/eliminar-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productoId: item.producto.id,
+            sku: item.producto.codigoBarras ?? null,
+            nombre: item.producto.nombre,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario,
+            subtotal: item.subtotal,
+            sesionCajaId: sesionCaja?.id ?? null,
+          }),
+        }).catch(() => {/* best-effort */})
+      } else {
+        setAuthEliminar({ item })
+      }
       return
     }
     const item = carrito.find((i) => i.producto.id === productoId)
@@ -206,6 +241,12 @@ export default function VentasPage() {
           : i
       )
     )
+  }
+
+  function eliminarItemConAutorizacion(productoId: string) {
+    setCarrito((prev) => prev.filter((i) => i.producto.id !== productoId))
+    setError(null)
+    setAuthEliminar(null)
   }
 
   function limpiarCarrito() {
@@ -672,6 +713,25 @@ export default function VentasPage() {
         </div>
       </div>
     )}
+
+      {/* Authorization modal for cart item removal */}
+      {authEliminar && (
+        <AutorizacionModal
+          accion="eliminar_item_carrito"
+          targetId={authEliminar.item.producto.id}
+          detalleItem={{
+            productoId: authEliminar.item.producto.id,
+            sku: authEliminar.item.producto.codigoBarras ?? null,
+            nombre: authEliminar.item.producto.nombre,
+            cantidad: authEliminar.item.cantidad,
+            precioUnitario: authEliminar.item.precioUnitario,
+            subtotal: authEliminar.item.subtotal,
+            sesionCajaId: sesionCaja?.id ?? null,
+          }}
+          onSuccess={() => eliminarItemConAutorizacion(authEliminar.item.producto.id)}
+          onCancel={() => setAuthEliminar(null)}
+        />
+      )}
   </>
   )
 }
